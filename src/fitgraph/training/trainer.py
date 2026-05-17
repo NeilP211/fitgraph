@@ -1,4 +1,14 @@
-"""Contrastive training loop for the HGAT model."""
+"""Mini-batch subgraph contrastive training for the HGAT model.
+
+Design
+------
+- Builds a co-occurrence map from TRAIN outfits only (no test leakage).
+- Each training step operates on a small HeteroData subgraph for the current
+  batch of outfits, not the full graph.
+- Neighbor (edge) dropout forces the inductive ``embed_features`` path to be
+  trained alongside the graph path.
+- Validation uses ONLY ``model.embed_features`` (no graph, no leakage).
+"""
 
 from __future__ import annotations
 
@@ -12,6 +22,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
+from torch_geometric.data import HeteroData
 
 from fitgraph.models.hgat import HGAT
 from fitgraph.training.loss import info_nce
@@ -19,31 +30,40 @@ from fitgraph.training.negatives import mine_hard_negatives
 
 if TYPE_CHECKING:
     from fitgraph.config import Settings
-    from fitgraph.graph.builder import GraphBundle
+    from fitgraph.data.polyvore import Outfit
 
 
 class Trainer:
-    """Manages contrastive training of an HGAT model.
+    """Mini-batch subgraph trainer for the HGAT model.
 
     Parameters
     ----------
-    bundle:
-        GraphBundle containing the HeteroData graph and index maps.
-    clip_emb:
-        CLIP embeddings aligned to garment node order, shape
-        ``(num_garments, 512)``.
+    fused_tensor:
+        Fused feature tensor aligned to ``all_ids``, shape ``(N, 896)``.
+    clip_tensor:
+        CLIP feature tensor aligned to ``all_ids``, shape ``(N, 512)``.
+    all_ids:
+        List of item_id strings in the same order as ``fused_tensor`` rows.
+    train_outfits:
+        List of Outfit objects from the train split.
+    valid_outfits:
+        List of Outfit objects from the valid split.
     settings:
-        Configuration object (hidden_dim, lr, epochs, batch_size, etc.).
+        Configuration object.
     """
 
     def __init__(
         self,
-        bundle: GraphBundle,
-        clip_emb: np.ndarray,
+        fused_tensor: torch.Tensor,
+        clip_tensor: torch.Tensor,
+        all_ids: list[str],
+        train_outfits: list[Outfit],
+        valid_outfits: list[Outfit],
         settings: Settings,
     ) -> None:
-        self.bundle = bundle
         self.settings = settings
+        self.train_outfits = train_outfits
+        self.valid_outfits = valid_outfits
 
         # Seed for determinism
         torch.manual_seed(settings.seed)
@@ -52,15 +72,17 @@ class Trainer:
 
         self.device = torch.device(self._resolve_device())
 
-        # Move graph to device
-        self.data = bundle.data.to(self.device)
+        # Build item_id -> index mapping for the full item set
+        self.all_ids: list[str] = all_ids
+        self.id_to_idx: dict[str, int] = {iid: i for i, iid in enumerate(all_ids)}
 
-        # CLIP embeddings on device
-        self.clip_emb = torch.tensor(clip_emb, dtype=torch.float32, device=self.device)
+        # Move feature tensors to device
+        self.fused_tensor = fused_tensor.to(self.device)   # (N, 896)
+        self.clip_tensor = clip_tensor.to(self.device)     # (N, 512)
 
         # Build the model
         self.model = HGAT(
-            in_dim=896,
+            in_dim=fused_tensor.shape[1],
             hidden_dim=settings.hidden_dim,
             num_layers=settings.num_layers,
             num_heads=settings.num_heads,
@@ -69,10 +91,11 @@ class Trainer:
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=settings.lr)
 
-        # Precompute co-occurrence map and positive pairs
-        self._cooccur: dict[int, set[int]] = self._build_cooccur_map()
-        self._train_pairs: list[tuple[int, int]] = self._build_pairs("train")
-        self._valid_pairs: list[tuple[int, int]] = self._build_pairs("valid")
+        # Co-occurrence map: item_id -> set of co-worn item_ids (TRAIN ONLY)
+        self._cooccur_ids: dict[str, set[str]] = self._build_cooccur_map(train_outfits)
+
+        # Valid positive pairs (as index tuples into all_ids)
+        self._valid_pairs: list[tuple[int, int]] = self._build_valid_pairs()
         self._valid_neg_pairs: list[tuple[int, int]] = self._build_valid_negatives()
 
     # ------------------------------------------------------------------
@@ -81,98 +104,144 @@ class Trainer:
 
     @staticmethod
     def _resolve_device() -> str:
-        """Return best available device."""
-        import torch
-
         if torch.backends.mps.is_available():
             return "mps"
         if torch.cuda.is_available():
             return "cuda"
         return "cpu"
 
-    def _build_cooccur_map(self) -> dict[int, set[int]]:
-        """Build garment_idx -> set of co-worn garment_idxs across ALL outfits."""
-        # Use numpy for fast vectorised operations; ensure CPU tensors
-        edge_index = self.bundle.data["garment", "in", "outfit"].edge_index
-        g_arr = edge_index[0].cpu().numpy()  # (E,) garment indices
-        o_arr = edge_index[1].cpu().numpy()  # (E,) outfit indices
-
-        # Build outfit -> garments map via numpy groupby
-        sort_idx = np.argsort(o_arr, kind="stable")
-        g_sorted = g_arr[sort_idx]
-        o_sorted = o_arr[sort_idx]
-        _, outfit_start, outfit_counts = np.unique(
-            o_sorted, return_index=True, return_counts=True
-        )
-
-        cooccur: dict[int, set[int]] = {}
-        for start, count in zip(outfit_start, outfit_counts, strict=True):
-            garments = g_sorted[start : start + count].tolist()
-            for g in garments:
-                if g not in cooccur:
-                    cooccur[g] = set()
-                cooccur[g].update(g2 for g2 in garments if g2 != g)
-
+    def _build_cooccur_map(
+        self, outfits: list[Outfit]
+    ) -> dict[str, set[str]]:
+        """Build item_id -> set of co-worn item_ids from the given outfits."""
+        cooccur: dict[str, set[str]] = {}
+        for outfit in outfits:
+            valid = [iid for iid in outfit.item_ids if iid in self.id_to_idx]
+            for iid in valid:
+                if iid not in cooccur:
+                    cooccur[iid] = set()
+                cooccur[iid].update(other for other in valid if other != iid)
         return cooccur
 
-    def _build_pairs(self, split: str) -> list[tuple[int, int]]:
-        """Build all unordered co-worn garment pairs from outfits in ``split``."""
-        edge_index = self.bundle.data["garment", "in", "outfit"].edge_index
-        g_arr = edge_index[0].cpu().numpy()  # (E,)
-        o_arr = edge_index[1].cpu().numpy()  # (E,)
-
-        # Mask to split outfits
-        split_mask = np.array(
-            [s == split for s in self.bundle.outfit_split], dtype=bool
-        )  # (num_outfits,)
-        edge_mask = split_mask[o_arr]  # (E,)
-        g_split = g_arr[edge_mask]
-        o_split = o_arr[edge_mask]
-
-        # Group by outfit
-        sort_idx = np.argsort(o_split, kind="stable")
-        g_sorted = g_split[sort_idx]
-        o_sorted = o_split[sort_idx]
-        _, outfit_start, outfit_counts = np.unique(
-            o_sorted, return_index=True, return_counts=True
-        )
-
+    def _build_valid_pairs(self) -> list[tuple[int, int]]:
+        """Build all co-worn garment index pairs from valid outfits."""
         pairs: list[tuple[int, int]] = []
         seen: set[tuple[int, int]] = set()
-        for start, count in zip(outfit_start, outfit_counts, strict=True):
-            garments = g_sorted[start : start + count].tolist()
-            for i in range(len(garments)):
-                for j in range(i + 1, len(garments)):
-                    a, b = garments[i], garments[j]
+        for outfit in self.valid_outfits:
+            valid = [
+                self.id_to_idx[iid]
+                for iid in outfit.item_ids
+                if iid in self.id_to_idx
+            ]
+            for i in range(len(valid)):
+                for j in range(i + 1, len(valid)):
+                    a, b = valid[i], valid[j]
                     key = (min(a, b), max(a, b))
                     if key not in seen:
                         seen.add(key)
                         pairs.append(key)
-
         return pairs
 
     def _build_valid_negatives(self) -> list[tuple[int, int]]:
         """Build random non-co-worn negative pairs equal in count to valid positives."""
         n = len(self._valid_pairs)
-        num_garments = len(self.bundle.garment_ids)
+        N = len(self.all_ids)
         rng = random.Random(self.settings.seed + 1)
+
+        # Build a fast co-occurrence lookup using indices
+        cooccur_idx: dict[int, set[int]] = {}
+        for iid, co_set in self._cooccur_ids.items():
+            if iid not in self.id_to_idx:
+                continue
+            idx = self.id_to_idx[iid]
+            cooccur_idx[idx] = {self.id_to_idx[co] for co in co_set if co in self.id_to_idx}
 
         negs: list[tuple[int, int]] = []
         attempts = 0
-        max_attempts = n * 20
+        max_attempts = n * 50
         while len(negs) < n and attempts < max_attempts:
-            a = rng.randint(0, num_garments - 1)
-            b = rng.randint(0, num_garments - 1)
+            a = rng.randint(0, N - 1)
+            b = rng.randint(0, N - 1)
             if a == b:
                 attempts += 1
                 continue
-            # Not co-worn
-            if b not in self._cooccur.get(a, set()):
+            if b not in cooccur_idx.get(a, set()):
                 key = (min(a, b), max(a, b))
                 negs.append(key)
             attempts += 1
-
         return negs[:n]
+
+    def _build_batch_subgraph(
+        self,
+        outfit_batch: list[Outfit],
+        edge_dropout: float,
+    ) -> tuple[HeteroData, list[str], dict[str, int]]:
+        """Build a small HeteroData subgraph for a batch of outfits.
+
+        Returns
+        -------
+        subgraph:
+            HeteroData with garment and outfit nodes for this batch.
+        local_garment_ids:
+            Ordered list of item_ids for garment nodes in the subgraph.
+        local_id_to_idx:
+            item_id -> local garment node index.
+        """
+        # Collect unique item ids in this batch
+        used_ids: set[str] = set()
+        for outfit in outfit_batch:
+            for iid in outfit.item_ids:
+                if iid in self.id_to_idx:
+                    used_ids.add(iid)
+
+        local_garment_ids: list[str] = sorted(used_ids)
+        local_id_to_idx: dict[str, int] = {
+            iid: i for i, iid in enumerate(local_garment_ids)
+        }
+
+        num_outfits = len(outfit_batch)
+
+        # Garment features: gather from fused_tensor
+        global_indices = torch.tensor(
+            [self.id_to_idx[iid] for iid in local_garment_ids],
+            dtype=torch.long,
+            device=self.device,
+        )
+        garment_x = self.fused_tensor[global_indices]  # (num_garments, 896)
+
+        # Outfit features: zeros (learned via message passing)
+        outfit_x = torch.zeros((num_outfits, garment_x.shape[1]), device=self.device)
+
+        # Build edges
+        src_g: list[int] = []
+        dst_o: list[int] = []
+        for o_idx, outfit in enumerate(outfit_batch):
+            for iid in outfit.item_ids:
+                if iid in local_id_to_idx:
+                    # Neighbor dropout: skip edge with probability edge_dropout
+                    if edge_dropout > 0.0 and random.random() < edge_dropout:
+                        continue
+                    src_g.append(local_id_to_idx[iid])
+                    dst_o.append(o_idx)
+
+        if src_g:
+            garment_in_outfit = torch.tensor(
+                [src_g, dst_o], dtype=torch.long, device=self.device
+            )
+            outfit_contains_garment = torch.tensor(
+                [dst_o, src_g], dtype=torch.long, device=self.device
+            )
+        else:
+            garment_in_outfit = torch.zeros((2, 0), dtype=torch.long, device=self.device)
+            outfit_contains_garment = torch.zeros((2, 0), dtype=torch.long, device=self.device)
+
+        subgraph = HeteroData()
+        subgraph["garment"].x = garment_x
+        subgraph["outfit"].x = outfit_x
+        subgraph["garment", "in", "outfit"].edge_index = garment_in_outfit
+        subgraph["outfit", "contains", "garment"].edge_index = outfit_contains_garment
+
+        return subgraph, local_garment_ids, local_id_to_idx
 
     def _next_version_dir(self) -> Path:
         """Return the next versioned model directory (v0, v1, v2, …)."""
@@ -186,6 +255,42 @@ class Trainer:
         return version_dir
 
     # ------------------------------------------------------------------
+    # Validation: HONEST inductive only (no graph, no leakage)
+    # ------------------------------------------------------------------
+
+    def _validate(self) -> float:
+        """Compute val AUC using ONLY embed_features (no graph context)."""
+        if not self._valid_pairs or not self._valid_neg_pairs:
+            return 0.5
+
+        self.model.eval()
+        with torch.no_grad():
+            # Embed ALL items purely via feature projection (inductive path)
+            all_emb = self.model.embed_features(self.fused_tensor)  # (N, D)
+
+        labels: list[int] = []
+        sims: list[float] = []
+
+        # Positive pairs
+        a_idx = torch.tensor([p[0] for p in self._valid_pairs], device=self.device)
+        b_idx = torch.tensor([p[1] for p in self._valid_pairs], device=self.device)
+        pos_sims = F.cosine_similarity(all_emb[a_idx], all_emb[b_idx]).cpu().tolist()
+        labels.extend([1] * len(pos_sims))
+        sims.extend(pos_sims)
+
+        # Negative pairs
+        na_idx = torch.tensor([p[0] for p in self._valid_neg_pairs], device=self.device)
+        nb_idx = torch.tensor([p[1] for p in self._valid_neg_pairs], device=self.device)
+        neg_sims = F.cosine_similarity(all_emb[na_idx], all_emb[nb_idx]).cpu().tolist()
+        labels.extend([0] * len(neg_sims))
+        sims.extend(neg_sims)
+
+        if len(set(labels)) < 2:
+            return 0.5
+
+        return float(roc_auc_score(labels, sims))
+
+    # ------------------------------------------------------------------
     # Training loop
     # ------------------------------------------------------------------
 
@@ -195,7 +300,8 @@ class Trainer:
         Returns
         -------
         dict
-            Summary with ``best_val_auc``, ``version_dir``, ``epochs``.
+            Summary with ``best_val_auc``, ``version_dir``, ``epochs``,
+            ``epoch_losses``.
         """
         settings = self.settings
         rng = random.Random(settings.seed)
@@ -203,66 +309,102 @@ class Trainer:
         best_val_auc = 0.0
         best_state: dict | None = None
         version_dir = self._next_version_dir()
-
         epoch_losses: list[float] = []
 
         for epoch in range(1, settings.epochs + 1):
             self.model.train()
-            # Shuffle training pairs
-            pairs = list(self._train_pairs)
-            rng.shuffle(pairs)
+
+            # Shuffle train outfits for this epoch
+            outfits = list(self.train_outfits)
+            rng.shuffle(outfits)
 
             batch_losses: list[float] = []
 
-            for start in range(0, len(pairs), settings.batch_size):
-                batch = pairs[start : start + settings.batch_size]
-                if len(batch) < 2:
+            for start in range(0, len(outfits), settings.batch_size):
+                outfit_batch = outfits[start : start + settings.batch_size]
+                if len(outfit_batch) < 2:
                     continue
 
-                anchors_idx = torch.tensor(
-                    [p[0] for p in batch], dtype=torch.long, device=self.device
-                )
-                positives_idx = torch.tensor(
-                    [p[1] for p in batch], dtype=torch.long, device=self.device
+                # Build subgraph with edge dropout
+                subgraph, local_ids, local_id_to_idx = self._build_batch_subgraph(
+                    outfit_batch, edge_dropout=settings.edge_dropout
                 )
 
-                # Full-graph forward to get all garment embeddings
-                all_emb = self.model(self.data)  # (num_garments, hidden_dim)
+                if len(local_ids) < 2:
+                    continue
 
-                anchor_emb = all_emb[anchors_idx]   # (B, D)
-                positive_emb = all_emb[positives_idx]  # (B, D)
+                # Forward pass on small subgraph
+                z = self.model(subgraph)  # (num_local_garments, D)
 
-                # Hard negative mining using CLIP embeddings
-                pool_size = min(512, len(self.bundle.garment_ids))
-                pool_indices_list = random.sample(
-                    range(len(self.bundle.garment_ids)), pool_size
+                # Build positive pairs from co-worn items in this batch
+                anchor_local: list[int] = []
+                positive_local: list[int] = []
+
+                for outfit in outfit_batch:
+                    valid = [
+                        local_id_to_idx[iid]
+                        for iid in outfit.item_ids
+                        if iid in local_id_to_idx
+                    ]
+                    for i in range(len(valid)):
+                        for j in range(i + 1, len(valid)):
+                            anchor_local.append(valid[i])
+                            positive_local.append(valid[j])
+
+                if len(anchor_local) < 2:
+                    continue
+
+                # Randomly subsample pairs to avoid O(n^2) blowup
+                max_pairs = settings.batch_size * 4
+                if len(anchor_local) > max_pairs:
+                    perm = rng.sample(range(len(anchor_local)), max_pairs)
+                    anchor_local = [anchor_local[i] for i in perm]
+                    positive_local = [positive_local[i] for i in perm]
+
+                anchor_idx = torch.tensor(anchor_local, dtype=torch.long, device=self.device)
+                positive_idx = torch.tensor(positive_local, dtype=torch.long, device=self.device)
+
+                anchor_emb = z[anchor_idx]    # (B, D)
+                positive_emb = z[positive_idx]  # (B, D)
+
+                # Hard negative mining using CLIP features from the batch's items
+                global_indices = torch.tensor(
+                    [self.id_to_idx[iid] for iid in local_ids],
+                    dtype=torch.long,
+                    device=self.device,
                 )
-                pool_indices = torch.tensor(
-                    pool_indices_list, dtype=torch.long, device=self.device
-                )
-                pool_clip = self.clip_emb[pool_indices]  # (P, 512)
-                anchor_clip = self.clip_emb[anchors_idx]  # (B, 512)
+                pool_clip = self.clip_tensor[global_indices]  # (P, 512)
+                anchor_clip = self.clip_tensor[
+                    torch.tensor(
+                        [self.id_to_idx[local_ids[i]] for i in anchor_local],
+                        dtype=torch.long,
+                        device=self.device,
+                    )
+                ]  # (B, 512)
 
-                # Build forbidden sets efficiently (all on CPU)
-                B = len(batch)
-                anchors_cpu = anchors_idx.cpu().tolist()
-                pool_set = {g_idx: pos for pos, g_idx in enumerate(pool_indices_list)}
+                # Build forbidden sets (co-worn partners in local index space)
+                # local_set maps local_idx -> item_id
+                local_set = {v: k for k, v in local_id_to_idx.items()}
                 forbidden: list[set[int]] = []
-                for a_cpu in anchors_cpu:
-                    cooccur_set = self._cooccur.get(a_cpu, set())
-                    forbidden_pool_pos = {
-                        pool_set[g] for g in cooccur_set if g in pool_set
+                for a_local_i in anchor_local:
+                    a_id = local_set[a_local_i]
+                    co_ids = self._cooccur_ids.get(a_id, set())
+                    # Map co_ids to their local indices (those in the batch)
+                    forbidden_local = {
+                        local_id_to_idx[co_id]
+                        for co_id in co_ids
+                        if co_id in local_id_to_idx
                     }
-                    forbidden.append(forbidden_pool_pos)
+                    forbidden.append(forbidden_local)
 
-                hard_neg_pool_idx = mine_hard_negatives(
-                    anchor_clip, pool_clip, forbidden, settings.num_hard_negatives
+                hard_neg_local_idx = mine_hard_negatives(
+                    anchor_clip,
+                    pool_clip,
+                    forbidden,
+                    settings.num_hard_negatives,
                 )  # (B, k)
 
-                hard_neg_global_idx = pool_indices[hard_neg_pool_idx.view(-1)].view(
-                    B, settings.num_hard_negatives
-                )
-                extra_neg_emb = all_emb[hard_neg_global_idx.view(-1)]  # (B*k, D)
+                extra_neg_emb = z[hard_neg_local_idx.view(-1)]  # (B*k, D)
 
                 loss = info_nce(
                     anchor_emb,
@@ -280,30 +422,25 @@ class Trainer:
             mean_loss = float(np.mean(batch_losses)) if batch_losses else float("nan")
             epoch_losses.append(mean_loss)
 
-            # Validation
+            # Honest inductive validation
             val_auc = self._validate()
 
-            # Track best and save checkpoint immediately when improved
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
-                best_state = {
-                    k: v.cpu().clone() for k, v in self.model.state_dict().items()
-                }
-                # Save best checkpoint eagerly so it survives early termination
+                best_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
                 torch.save(best_state, version_dir / "model.pt")
                 meta_interim = {
                     "version": version_dir.name,
-                    "epochs": epoch,
+                    "epochs_run": epoch,
                     "best_val_auc": best_val_auc,
                     "hidden_dim": settings.hidden_dim,
                     "num_layers": settings.num_layers,
                     "num_heads": settings.num_heads,
-                    "in_dim": 896,
+                    "in_dim": self.fused_tensor.shape[1],
+                    "edge_dropout": settings.edge_dropout,
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
-                (version_dir / "meta.json").write_text(
-                    json.dumps(meta_interim, indent=2)
-                )
+                (version_dir / "meta.json").write_text(json.dumps(meta_interim, indent=2))
 
             print(
                 f"Epoch {epoch:03d}/{settings.epochs} | "
@@ -315,20 +452,12 @@ class Trainer:
 
             if settings.wandb_enabled:
                 import wandb  # noqa: PLC0415
+                wandb.log({"epoch": epoch, "train_loss": mean_loss, "val_auc": val_auc})
 
-                wandb.log(
-                    {
-                        "epoch": epoch,
-                        "train_loss": mean_loss,
-                        "val_auc": val_auc,
-                    }
-                )
-
-        # Final checkpoint save (may already be written per-epoch above)
+        # Final checkpoint (may already be written above)
         if best_state is not None:
             torch.save(best_state, version_dir / "model.pt")
         else:
-            # Edge case: save current state
             torch.save(
                 {k: v.cpu() for k, v in self.model.state_dict().items()},
                 version_dir / "model.pt",
@@ -336,12 +465,13 @@ class Trainer:
 
         meta = {
             "version": version_dir.name,
-            "epochs": settings.epochs,
+            "epochs_run": settings.epochs,
             "best_val_auc": best_val_auc,
             "hidden_dim": settings.hidden_dim,
             "num_layers": settings.num_layers,
             "num_heads": settings.num_heads,
-            "in_dim": 896,
+            "in_dim": self.fused_tensor.shape[1],
+            "edge_dropout": settings.edge_dropout,
             "timestamp": datetime.now(UTC).isoformat(),
         }
         (version_dir / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -352,36 +482,3 @@ class Trainer:
             "epochs": settings.epochs,
             "epoch_losses": epoch_losses,
         }
-
-    def _validate(self) -> float:
-        """Compute pairwise compatibility AUC on validation pairs."""
-        if not self._valid_pairs or not self._valid_neg_pairs:
-            return 0.5
-
-        self.model.eval()
-        with torch.no_grad():
-            all_emb = self.model(self.data)  # (num_garments, hidden_dim)
-
-        labels: list[int] = []
-        sims: list[float] = []
-
-        # Positive pairs
-        for a_idx, b_idx in self._valid_pairs:
-            ea = all_emb[a_idx]
-            eb = all_emb[b_idx]
-            sim = float(F.cosine_similarity(ea.unsqueeze(0), eb.unsqueeze(0)))
-            labels.append(1)
-            sims.append(sim)
-
-        # Negative pairs
-        for a_idx, b_idx in self._valid_neg_pairs:
-            ea = all_emb[a_idx]
-            eb = all_emb[b_idx]
-            sim = float(F.cosine_similarity(ea.unsqueeze(0), eb.unsqueeze(0)))
-            labels.append(0)
-            sims.append(sim)
-
-        if len(set(labels)) < 2:
-            return 0.5
-
-        return float(roc_auc_score(labels, sims))

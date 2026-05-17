@@ -1,17 +1,17 @@
-"""Tests for the Trainer class."""
+"""Tests for the mini-batch subgraph Trainer class."""
 
 from __future__ import annotations
 
+import json
 import math
 import tempfile
 from pathlib import Path
 
 import numpy as np
 import torch
-from torch_geometric.data import HeteroData
 
 from fitgraph.config import Settings
-from fitgraph.graph.builder import GraphBundle
+from fitgraph.data.polyvore import Outfit
 from fitgraph.training.trainer import Trainer
 
 # ---------------------------------------------------------------------------
@@ -19,68 +19,46 @@ from fitgraph.training.trainer import Trainer
 # ---------------------------------------------------------------------------
 
 
-def _make_synthetic_bundle(
-    num_garments: int = 40,
-    num_outfits: int = 20,
+def _make_synthetic_data(
+    num_items: int = 60,
+    num_train_outfits: int = 20,
+    num_valid_outfits: int = 6,
     items_per_outfit: int = 4,
     seed: int = 0,
-) -> tuple[GraphBundle, np.ndarray]:
-    """Build a tiny synthetic GraphBundle + CLIP embeddings for testing."""
+) -> tuple[torch.Tensor, torch.Tensor, list[str], list[Outfit], list[Outfit]]:
+    """Build synthetic tensors and outfits for testing."""
     rng = np.random.default_rng(seed)
     torch.manual_seed(seed)
 
-    data = HeteroData()
-    data["garment"].x = torch.randn(num_garments, 896)
-    data["outfit"].x = torch.zeros(num_outfits, 896)
+    all_ids = [f"item{i}" for i in range(num_items)]
+    fused = torch.tensor(rng.standard_normal((num_items, 896)).astype(np.float32))
+    clip = torch.tensor(rng.standard_normal((num_items, 512)).astype(np.float32))
 
-    src_g: list[int] = []
-    dst_o: list[int] = []
-    for o_idx in range(num_outfits):
-        # Pick `items_per_outfit` garments for this outfit
-        chosen = rng.choice(num_garments, size=items_per_outfit, replace=False).tolist()
-        for g_idx in chosen:
-            src_g.append(g_idx)
-            dst_o.append(o_idx)
+    def make_outfits(n: int, prefix: str) -> list[Outfit]:
+        outfits = []
+        for i in range(n):
+            chosen = rng.choice(num_items, size=items_per_outfit, replace=False)
+            outfits.append(Outfit(id=f"{prefix}{i}", item_ids=[all_ids[j] for j in chosen]))
+        return outfits
 
-    data["garment", "in", "outfit"].edge_index = torch.tensor(
-        [src_g, dst_o], dtype=torch.long
-    )
-    data["outfit", "contains", "garment"].edge_index = torch.tensor(
-        [dst_o, src_g], dtype=torch.long
-    )
+    train_outfits = make_outfits(num_train_outfits, "train_o")
+    valid_outfits = make_outfits(num_valid_outfits, "valid_o")
 
-    garment_ids = [f"g{i}" for i in range(num_garments)]
-    outfit_ids = [f"o{i}" for i in range(num_outfits)]
-    # Assign splits: 60% train, 20% valid, 20% test
-    outfit_split: list[str] = []
-    for i in range(num_outfits):
-        if i < int(0.6 * num_outfits):
-            outfit_split.append("train")
-        elif i < int(0.8 * num_outfits):
-            outfit_split.append("valid")
-        else:
-            outfit_split.append("test")
-
-    bundle = GraphBundle(
-        data=data,
-        garment_ids=garment_ids,
-        outfit_ids=outfit_ids,
-        outfit_split=outfit_split,
-    )
-
-    # Synthetic CLIP embeddings aligned to garment order
-    clip_emb = rng.standard_normal((num_garments, 512)).astype(np.float32)
-    clip_emb /= np.linalg.norm(clip_emb, axis=-1, keepdims=True) + 1e-8
-
-    return bundle, clip_emb
+    return fused, clip, all_ids, train_outfits, valid_outfits
 
 
-def _make_settings(models_dir: Path) -> Settings:
-    """Create a minimal Settings for testing."""
-    return Settings(
-        data_dir=models_dir.parent,  # just needs to resolve models_dir
+def _make_patched_settings(tmp_path: Path, **overrides) -> Settings:
+    """Create a fast minimal Settings, patching models_dir to tmp_path/models."""
+
+    class PatchedSettings(Settings):
+        @property
+        def models_dir(self) -> Path:
+            return tmp_path / "models"
+
+    defaults = dict(
+        data_dir=tmp_path,
         epochs=2,
-        batch_size=16,
+        batch_size=8,
         hidden_dim=32,
         num_heads=2,
         num_layers=1,
@@ -88,7 +66,23 @@ def _make_settings(models_dir: Path) -> Settings:
         lr=1e-3,
         temperature=0.1,
         num_hard_negatives=2,
+        edge_dropout=0.3,
         seed=42,
+    )
+    defaults.update(overrides)
+    return PatchedSettings(**defaults)
+
+
+def _make_trainer(tmp_path: Path, **setting_overrides) -> Trainer:
+    fused, clip, all_ids, train_outfits, valid_outfits = _make_synthetic_data()
+    settings = _make_patched_settings(tmp_path, **setting_overrides)
+    return Trainer(
+        fused_tensor=fused,
+        clip_tensor=clip,
+        all_ids=all_ids,
+        train_outfits=train_outfits,
+        valid_outfits=valid_outfits,
+        settings=settings,
     )
 
 
@@ -99,38 +93,11 @@ def _make_settings(models_dir: Path) -> Settings:
 
 def test_trainer_completes_and_saves_checkpoint() -> None:
     """Trainer.fit() completes 2 epochs and writes model.pt + meta.json."""
-    bundle, clip_emb = _make_synthetic_bundle()
-
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-        settings = _make_settings(tmp_path)
-        # Override models_dir by monkey-patching
-        settings.__dict__["_models_dir_override"] = tmp_path / "models"
-
-        # Patch the models_dir property via a local subclass
-        class PatchedSettings(Settings):
-            @property
-            def models_dir(self) -> Path:
-                return tmp_path / "models"
-
-        patched = PatchedSettings(
-            data_dir=tmp_path,
-            epochs=2,
-            batch_size=16,
-            hidden_dim=32,
-            num_heads=2,
-            num_layers=1,
-            dropout=0.0,
-            lr=1e-3,
-            temperature=0.1,
-            num_hard_negatives=2,
-            seed=42,
-        )
-
-        trainer = Trainer(bundle, clip_emb, patched)
+        trainer = _make_trainer(tmp_path)
         results = trainer.fit()
 
-        # Check result structure
         assert "best_val_auc" in results
         assert "version_dir" in results
         assert "epoch_losses" in results
@@ -143,66 +110,31 @@ def test_trainer_completes_and_saves_checkpoint() -> None:
 
 def test_trainer_loss_is_finite() -> None:
     """All epoch losses are finite numbers."""
-    bundle, clip_emb = _make_synthetic_bundle()
-
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
-
-        class PatchedSettings(Settings):
-            @property
-            def models_dir(self) -> Path:
-                return tmp_path / "models"
-
-        patched = PatchedSettings(
-            data_dir=tmp_path,
-            epochs=2,
-            batch_size=16,
-            hidden_dim=32,
-            num_heads=2,
-            num_layers=1,
-            dropout=0.0,
-            lr=1e-3,
-            temperature=0.1,
-            num_hard_negatives=2,
-            seed=42,
-        )
-
-        trainer = Trainer(bundle, clip_emb, patched)
+        trainer = _make_trainer(tmp_path)
         results = trainer.fit()
 
         for i, loss in enumerate(results["epoch_losses"]):
             assert math.isfinite(loss), f"Epoch {i+1} loss is not finite: {loss}"
 
 
-def test_trainer_checkpoint_contents() -> None:
-    """model.pt contains a valid state dict and meta.json has expected keys."""
-    import json
-
-    bundle, clip_emb = _make_synthetic_bundle()
-
+def test_trainer_val_auc_in_range() -> None:
+    """Val AUC returned by fit() is a valid probability in [0, 1]."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
+        results = trainer.fit()
 
-        class PatchedSettings(Settings):
-            @property
-            def models_dir(self) -> Path:
-                return tmp_path / "models"
+        auc = results["best_val_auc"]
+        assert 0.0 <= auc <= 1.0, f"Val AUC out of range [0,1]: {auc}"
 
-        patched = PatchedSettings(
-            data_dir=tmp_path,
-            epochs=2,
-            batch_size=16,
-            hidden_dim=32,
-            num_heads=2,
-            num_layers=1,
-            dropout=0.0,
-            lr=1e-3,
-            temperature=0.1,
-            num_hard_negatives=2,
-            seed=42,
-        )
 
-        trainer = Trainer(bundle, clip_emb, patched)
+def test_trainer_checkpoint_contents() -> None:
+    """model.pt is a valid state dict; meta.json has all required keys."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
         results = trainer.fit()
 
         version_dir = Path(results["version_dir"])
@@ -214,45 +146,75 @@ def test_trainer_checkpoint_contents() -> None:
 
         # Check meta.json
         meta = json.loads((version_dir / "meta.json").read_text())
-        expected_keys = {
-            "version", "epochs", "best_val_auc", "hidden_dim",
-            "num_layers", "num_heads", "in_dim", "timestamp",
+        required_keys = {
+            "version", "epochs_run", "best_val_auc", "hidden_dim",
+            "num_layers", "num_heads", "in_dim", "edge_dropout", "timestamp",
         }
-        assert expected_keys.issubset(meta.keys()), (
-            f"meta.json missing keys: {expected_keys - meta.keys()}"
+        assert required_keys.issubset(meta.keys()), (
+            f"meta.json missing keys: {required_keys - meta.keys()}"
         )
         assert meta["hidden_dim"] == 32
         assert meta["in_dim"] == 896
+        assert meta["edge_dropout"] == 0.3
 
 
-def test_trainer_val_auc_reasonable() -> None:
-    """After 2 epochs on synthetic data, val AUC should be a valid probability in [0,1]."""
-    bundle, clip_emb = _make_synthetic_bundle()
-
+def test_trainer_val_auc_computed() -> None:
+    """_validate() returns a float and val_auc is logged each epoch."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
 
-        class PatchedSettings(Settings):
-            @property
-            def models_dir(self) -> Path:
-                return tmp_path / "models"
+        # Run one manual validation; should not error
+        trainer.model.eval()
+        val_auc = trainer._validate()
+        assert isinstance(val_auc, float), f"Expected float, got {type(val_auc)}"
+        assert 0.0 <= val_auc <= 1.0
 
-        patched = PatchedSettings(
-            data_dir=tmp_path,
-            epochs=2,
-            batch_size=16,
-            hidden_dim=32,
-            num_heads=2,
-            num_layers=1,
-            dropout=0.0,
-            lr=1e-3,
-            temperature=0.1,
-            num_hard_negatives=2,
-            seed=42,
+
+def test_trainer_inductive_validation_uses_embed_features() -> None:
+    """Validation embeds via embed_features, not forward (no graph used)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
+
+        # embed_features should produce embeddings with correct shape
+        trainer.model.eval()
+        with torch.no_grad():
+            device = next(trainer.model.parameters()).device
+            emb = trainer.model.embed_features(trainer.fused_tensor.to(device))
+        assert emb.shape == (len(trainer.all_ids), 32), f"Unexpected shape: {emb.shape}"
+        # L2-normalised: norms should be ~1
+        norms = emb.norm(dim=-1)
+        assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5)
+
+
+def test_trainer_subgraph_build() -> None:
+    """_build_batch_subgraph produces valid edge indices within range."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        fused, clip, all_ids, train_outfits, valid_outfits = _make_synthetic_data()
+        settings = _make_patched_settings(tmp_path)
+        trainer = Trainer(
+            fused_tensor=fused,
+            clip_tensor=clip,
+            all_ids=all_ids,
+            train_outfits=train_outfits,
+            valid_outfits=valid_outfits,
+            settings=settings,
         )
 
-        trainer = Trainer(bundle, clip_emb, patched)
-        results = trainer.fit()
+        batch = train_outfits[:4]
+        subgraph, local_ids, local_id_to_idx = trainer._build_batch_subgraph(
+            batch, edge_dropout=0.0
+        )
 
-        auc = results["best_val_auc"]
-        assert 0.0 <= auc <= 1.0, f"Val AUC out of range [0,1]: {auc}"
+        n_garments = len(local_ids)
+        n_outfits = len(batch)
+
+        assert subgraph["garment"].x.shape[1] == 896
+        assert subgraph["outfit"].x.shape[0] == n_outfits
+
+        ei = subgraph["garment", "in", "outfit"].edge_index
+        if ei.shape[1] > 0:
+            assert ei[0].max() < n_garments, "Garment edge index out of range"
+            assert ei[1].max() < n_outfits, "Outfit edge index out of range"

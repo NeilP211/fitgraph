@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     batch_size: int = 256
     temperature: float = 0.1
     num_hard_negatives: int = 5
+    edge_dropout: float = 0.4
     seed: int = 42
 
     # Infrastructure

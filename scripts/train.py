@@ -17,9 +17,13 @@ import torch
 
 from fitgraph.config import Settings, resolve_device
 from fitgraph.config import settings as default_settings
-from fitgraph.graph.builder import load_graph_bundle
+from fitgraph.data.splits import load_splits
+from fitgraph.graph.builder import build_hetero_graph
 from fitgraph.models.hgat import HGAT
 from fitgraph.training.trainer import Trainer
+
+# Polyvore root relative to the project (data/raw/polyvore-outfit-dataset/polyvore_outfits)
+_POLYVORE_ROOT = Path("data/raw/polyvore-outfit-dataset/polyvore_outfits")
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,135 +42,80 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def align_clip_to_garments(
-    garment_ids: list[str],
-    npz_ids: np.ndarray,
-    clip_emb: np.ndarray,
-) -> np.ndarray:
-    """Reorder clip_emb rows to match garment_ids order.
-
-    Parameters
-    ----------
-    garment_ids:
-        Ordered list of garment item IDs from the graph bundle.
-    npz_ids:
-        Item IDs from items.npz (may be in different order).
-    clip_emb:
-        CLIP embeddings aligned to npz_ids, shape (N, 512).
-
-    Returns
-    -------
-    np.ndarray
-        CLIP embeddings aligned to garment_ids, shape (len(garment_ids), 512).
-    """
-    id_to_clip: dict[str, np.ndarray] = {
-        str(npz_ids[i]): clip_emb[i] for i in range(len(npz_ids))
-    }
-    dim = clip_emb.shape[1]
-    result = np.zeros((len(garment_ids), dim), dtype=np.float32)
-    missing = 0
-    for i, gid in enumerate(garment_ids):
-        if gid in id_to_clip:
-            result[i] = id_to_clip[gid]
-        else:
-            missing += 1
-    if missing > 0:
-        print(f"[warn] {missing} garment IDs not found in items.npz; using zero CLIP emb.")
-    return result
-
-
-def export_garment_embeddings(
-    model: HGAT,
-    data: object,
-    garment_ids: list[str],
-    version_dir: Path,
-    device: str,
-) -> Path:
-    """Run a final forward pass and save garment embeddings to NPZ.
-
-    Parameters
-    ----------
-    model:
-        Trained HGAT model.
-    data:
-        HeteroData graph (already on device).
-    garment_ids:
-        List of garment item IDs in node order.
-    version_dir:
-        Directory to save the NPZ file.
-    device:
-        Device string.
-
-    Returns
-    -------
-    Path
-        Path to the saved NPZ file.
-    """
-    model.eval()
-    with torch.no_grad():
-        emb = model(data)  # (num_garments, hidden_dim)
-    emb_np = emb.cpu().numpy().astype(np.float32)
-    ids_np = np.array(garment_ids)
-    out_path = version_dir / "garment_embeddings.npz"
-    np.savez(out_path, ids=ids_np, emb=emb_np)
-    print(f"Saved garment embeddings: {out_path}  shape={emb_np.shape}")
-    return out_path
-
-
 def main() -> None:
     args = parse_args()
 
     # Build settings (override fields as needed)
     settings = default_settings
+    kwargs: dict = {}
     if args.full:
-        # Re-instantiate with use_full=True
-        settings = Settings(use_full=True)
+        kwargs["use_full"] = True
     if args.epochs is not None:
-        # Re-instantiate with overridden epochs
-        kwargs: dict = {}
-        if args.full:
-            kwargs["use_full"] = True
-        settings = Settings(epochs=args.epochs, **kwargs)
+        kwargs["epochs"] = args.epochs
+    if kwargs:
+        settings = Settings(**kwargs)
 
-    print(f"Settings: epochs={settings.epochs}, hidden_dim={settings.hidden_dim}")
+    print(f"Settings: epochs={settings.epochs}, hidden_dim={settings.hidden_dim}, "
+          f"batch_size={settings.batch_size}, edge_dropout={settings.edge_dropout}")
     print(f"Device: {resolve_device()}")
 
-    # Load graph bundle
-    graph_path = settings.graph_dir / "graph.pt"
-    print(f"Loading graph from {graph_path} ...")
-    bundle = load_graph_bundle(graph_path)
-    print(
-        f"  garments={len(bundle.garment_ids)}, outfits={len(bundle.outfit_ids)}, "
-        f"splits={dict(zip(*np.unique(bundle.outfit_split, return_counts=True), strict=True))}"
-    )
-
-    # Load and align CLIP embeddings
+    # ------------------------------------------------------------------
+    # 1. Load item embeddings
+    # ------------------------------------------------------------------
     npz_path = settings.embeddings_dir / "items.npz"
-    print(f"Loading CLIP embeddings from {npz_path} ...")
+    print(f"Loading embeddings from {npz_path} ...")
     npz = np.load(npz_path)
-    aligned_clip = align_clip_to_garments(
-        bundle.garment_ids, npz["ids"], npz["clip_emb"]
-    )
-    print(f"  CLIP emb aligned shape: {aligned_clip.shape}")
+    npz_ids: list[str] = [str(x) for x in npz["ids"]]
+    fused_np: np.ndarray = npz["fused"].astype(np.float32)     # (N, 896)
+    clip_np: np.ndarray = npz["clip_emb"].astype(np.float32)   # (N, 512)
+    fused_tensor = torch.from_numpy(fused_np)
+    clip_tensor = torch.from_numpy(clip_np)
+    print(f"  items: {len(npz_ids)}, fused_dim={fused_np.shape[1]}, clip_dim={clip_np.shape[1]}")
 
-    # Create and run trainer
-    trainer = Trainer(bundle, aligned_clip, settings)
-    print(
-        f"Training pairs: {len(trainer._train_pairs)}, "
-        f"valid pairs: {len(trainer._valid_pairs)}"
+    # ------------------------------------------------------------------
+    # 2. Load splits
+    # ------------------------------------------------------------------
+    subset = None if settings.use_full else settings.subset_outfits
+    print(f"Loading splits (subset_outfits={subset}) ...")
+    splits = load_splits(_POLYVORE_ROOT, subset_outfits=subset)
+    train_outfits = splits["train"]
+    valid_outfits = splits["valid"]
+    test_outfits = splits["test"]
+    print(f"  train={len(train_outfits)}, valid={len(valid_outfits)}, test={len(test_outfits)}")
+
+    # ------------------------------------------------------------------
+    # 3. Create and run trainer
+    # ------------------------------------------------------------------
+    trainer = Trainer(
+        fused_tensor=fused_tensor,
+        clip_tensor=clip_tensor,
+        all_ids=npz_ids,
+        train_outfits=train_outfits,
+        valid_outfits=valid_outfits,
+        settings=settings,
     )
+    print(
+        f"Valid pos pairs: {len(trainer._valid_pairs)}, "
+        f"neg pairs: {len(trainer._valid_neg_pairs)}"
+    )
+
     results = trainer.fit()
 
     best_auc = results["best_val_auc"]
     version_dir = Path(results["version_dir"])
     print("\nTraining complete!")
-    print(f"  Best val AUC: {best_auc:.4f}")
+    print(f"  Best honest val AUC: {best_auc:.4f}")
     print(f"  Version dir: {version_dir}")
 
-    # Export garment embeddings from best checkpoint
-    device = resolve_device()
+    # ------------------------------------------------------------------
+    # 4. Load best checkpoint and export embeddings
+    # ------------------------------------------------------------------
+    device_str = resolve_device()
+    device = torch.device(device_str)
+
+    in_dim = fused_np.shape[1]
     best_model = HGAT(
-        in_dim=896,
+        in_dim=in_dim,
         hidden_dim=settings.hidden_dim,
         num_layers=settings.num_layers,
         num_heads=settings.num_heads,
@@ -174,11 +123,36 @@ def main() -> None:
     ).to(device)
     state_dict = torch.load(version_dir / "model.pt", map_location=device, weights_only=True)
     best_model.load_state_dict(state_dict)
+    best_model.eval()
 
-    graph_data = bundle.data.to(device)
-    export_garment_embeddings(best_model, graph_data, bundle.garment_ids, version_dir, device)
+    # 4a. catalog_embeddings.npz: TRAIN items via graph forward (leakage-free)
+    print("\nExporting catalog embeddings (train items, graph forward) ...")
+    id_to_fused: dict[str, np.ndarray] = {iid: fused_np[i] for i, iid in enumerate(npz_ids)}
+    train_bundle = build_hetero_graph(
+        outfits_by_split={"train": train_outfits},
+        item_embeddings=id_to_fused,
+    )
+    catalog_graph = train_bundle.data.to(device)
+    with torch.no_grad():
+        catalog_emb = best_model(catalog_graph)  # (num_train_garments, D)
+    catalog_ids = np.array(train_bundle.garment_ids)
+    catalog_emb_np = catalog_emb.cpu().numpy().astype(np.float32)
+    catalog_out = version_dir / "catalog_embeddings.npz"
+    np.savez(catalog_out, ids=catalog_ids, emb=catalog_emb_np)
+    print(f"  Saved {catalog_out}  shape={catalog_emb_np.shape}")
 
-    print(f"\nDone. Best val AUC={best_auc:.4f}, version dir={version_dir}")
+    # 4b. inductive_embeddings.npz: ALL items via embed_features (no graph)
+    print("Exporting inductive embeddings (all items, embed_features) ...")
+    fused_dev = fused_tensor.to(device)
+    with torch.no_grad():
+        inductive_emb = best_model.embed_features(fused_dev)  # (N, D)
+    inductive_ids = np.array(npz_ids)
+    inductive_emb_np = inductive_emb.cpu().numpy().astype(np.float32)
+    inductive_out = version_dir / "inductive_embeddings.npz"
+    np.savez(inductive_out, ids=inductive_ids, emb=inductive_emb_np)
+    print(f"  Saved {inductive_out}  shape={inductive_emb_np.shape}")
+
+    print(f"\nDone. Best honest val AUC={best_auc:.4f}, version dir={version_dir}")
 
 
 if __name__ == "__main__":

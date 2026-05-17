@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Data, embeddings, model checkpoints
+data/
+!data/.gitkeep
+*.pt
+*.pth
+*.npy
+*.npz
+runs/
+wandb/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+web/.env*.local
+
+# Env / secrets
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

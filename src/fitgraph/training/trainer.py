@@ -92,58 +92,55 @@ class Trainer:
 
     def _build_cooccur_map(self) -> dict[int, set[int]]:
         """Build garment_idx -> set of co-worn garment_idxs across ALL outfits."""
-        garment_index: dict[str, int] = {
-            gid: i for i, gid in enumerate(self.bundle.garment_ids)
-        }
-        outfit_index: dict[str, int] = {
-            oid: i for i, oid in enumerate(self.bundle.outfit_ids)
-        }
-
-        # Build outfit -> list[garment_idx] from edges
+        # Use numpy for fast vectorised operations; ensure CPU tensors
         edge_index = self.bundle.data["garment", "in", "outfit"].edge_index
-        outfit_garments: dict[int, list[int]] = {}
-        num_edges = edge_index.size(1)
-        for e in range(num_edges):
-            g_idx = int(edge_index[0, e])
-            o_idx = int(edge_index[1, e])
-            outfit_garments.setdefault(o_idx, []).append(g_idx)
+        g_arr = edge_index[0].cpu().numpy()  # (E,) garment indices
+        o_arr = edge_index[1].cpu().numpy()  # (E,) outfit indices
+
+        # Build outfit -> garments map via numpy groupby
+        sort_idx = np.argsort(o_arr, kind="stable")
+        g_sorted = g_arr[sort_idx]
+        o_sorted = o_arr[sort_idx]
+        _, outfit_start, outfit_counts = np.unique(
+            o_sorted, return_index=True, return_counts=True
+        )
 
         cooccur: dict[int, set[int]] = {}
-        for garments in outfit_garments.values():
+        for start, count in zip(outfit_start, outfit_counts, strict=True):
+            garments = g_sorted[start : start + count].tolist()
             for g in garments:
                 if g not in cooccur:
                     cooccur[g] = set()
                 cooccur[g].update(g2 for g2 in garments if g2 != g)
-
-        # Unused but kept for correctness reference
-        _ = garment_index
-        _ = outfit_index
 
         return cooccur
 
     def _build_pairs(self, split: str) -> list[tuple[int, int]]:
         """Build all unordered co-worn garment pairs from outfits in ``split``."""
         edge_index = self.bundle.data["garment", "in", "outfit"].edge_index
+        g_arr = edge_index[0].cpu().numpy()  # (E,)
+        o_arr = edge_index[1].cpu().numpy()  # (E,)
 
-        # Outfit indices belonging to this split
-        split_outfit_indices: set[int] = {
-            i
-            for i, s in enumerate(self.bundle.outfit_split)
-            if s == split
-        }
+        # Mask to split outfits
+        split_mask = np.array(
+            [s == split for s in self.bundle.outfit_split], dtype=bool
+        )  # (num_outfits,)
+        edge_mask = split_mask[o_arr]  # (E,)
+        g_split = g_arr[edge_mask]
+        o_split = o_arr[edge_mask]
 
-        # Build outfit -> garments map for this split
-        outfit_garments: dict[int, list[int]] = {}
-        num_edges = edge_index.size(1)
-        for e in range(num_edges):
-            g_idx = int(edge_index[0, e])
-            o_idx = int(edge_index[1, e])
-            if o_idx in split_outfit_indices:
-                outfit_garments.setdefault(o_idx, []).append(g_idx)
+        # Group by outfit
+        sort_idx = np.argsort(o_split, kind="stable")
+        g_sorted = g_split[sort_idx]
+        o_sorted = o_split[sort_idx]
+        _, outfit_start, outfit_counts = np.unique(
+            o_sorted, return_index=True, return_counts=True
+        )
 
         pairs: list[tuple[int, int]] = []
         seen: set[tuple[int, int]] = set()
-        for garments in outfit_garments.values():
+        for start, count in zip(outfit_start, outfit_counts, strict=True):
+            garments = g_sorted[start : start + count].tolist()
             for i in range(len(garments)):
                 for j in range(i + 1, len(garments)):
                     a, b = garments[i], garments[j]
@@ -222,8 +219,12 @@ class Trainer:
                 if len(batch) < 2:
                     continue
 
-                anchors_idx = torch.tensor([p[0] for p in batch], device=self.device)
-                positives_idx = torch.tensor([p[1] for p in batch], device=self.device)
+                anchors_idx = torch.tensor(
+                    [p[0] for p in batch], dtype=torch.long, device=self.device
+                )
+                positives_idx = torch.tensor(
+                    [p[1] for p in batch], dtype=torch.long, device=self.device
+                )
 
                 # Full-graph forward to get all garment embeddings
                 all_emb = self.model(self.data)  # (num_garments, hidden_dim)
@@ -231,8 +232,7 @@ class Trainer:
                 anchor_emb = all_emb[anchors_idx]   # (B, D)
                 positive_emb = all_emb[positives_idx]  # (B, D)
 
-                # Hard negative mining
-                # Sample a random candidate pool of ~512 garments
+                # Hard negative mining using CLIP embeddings
                 pool_size = min(512, len(self.bundle.garment_ids))
                 pool_indices_list = random.sample(
                     range(len(self.bundle.garment_ids)), pool_size
@@ -243,32 +243,26 @@ class Trainer:
                 pool_clip = self.clip_emb[pool_indices]  # (P, 512)
                 anchor_clip = self.clip_emb[anchors_idx]  # (B, 512)
 
-                # Build forbidden sets: for each anchor, which pool positions
-                # correspond to co-worn garments?
+                # Build forbidden sets efficiently (all on CPU)
                 B = len(batch)
+                anchors_cpu = anchors_idx.cpu().tolist()
+                pool_set = {g_idx: pos for pos, g_idx in enumerate(pool_indices_list)}
                 forbidden: list[set[int]] = []
-                for i in range(B):
-                    a_idx = int(anchors_idx[i])
-                    cooccur_set = self._cooccur.get(a_idx, set())
-                    # Map global garment indices to pool positions
-                    forbidden_pool_pos: set[int] = set()
-                    for pos, g_idx in enumerate(pool_indices_list):
-                        if g_idx in cooccur_set:
-                            forbidden_pool_pos.add(pos)
+                for a_cpu in anchors_cpu:
+                    cooccur_set = self._cooccur.get(a_cpu, set())
+                    forbidden_pool_pos = {
+                        pool_set[g] for g in cooccur_set if g in pool_set
+                    }
                     forbidden.append(forbidden_pool_pos)
 
                 hard_neg_pool_idx = mine_hard_negatives(
                     anchor_clip, pool_clip, forbidden, settings.num_hard_negatives
                 )  # (B, k)
 
-                # Gather hard negative embeddings
                 hard_neg_global_idx = pool_indices[hard_neg_pool_idx.view(-1)].view(
                     B, settings.num_hard_negatives
                 )
-                # Flatten to (B*k, D) then use as extra_negatives
-                extra_neg_emb = all_emb[
-                    hard_neg_global_idx.view(-1)
-                ]  # (B*k, D)
+                extra_neg_emb = all_emb[hard_neg_global_idx.view(-1)]  # (B*k, D)
 
                 loss = info_nce(
                     anchor_emb,

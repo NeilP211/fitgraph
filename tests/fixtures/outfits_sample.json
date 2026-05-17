@@ -1,0 +1,24 @@
+[
+  {
+    "set_id": "outfit_a",
+    "items": [
+      {"item_id": "item001", "index": 1},
+      {"item_id": "item002", "index": 2},
+      {"item_id": "item003", "index": 3}
+    ]
+  },
+  {
+    "set_id": "outfit_b",
+    "items": [
+      {"item_id": "item002", "index": 1},
+      {"item_id": "item004", "index": 2}
+    ]
+  },
+  {
+    "set_id": "outfit_c",
+    "items": [
+      {"item_id": "item001", "index": 1},
+      {"item_id": "item004", "index": 2}
+    ]
+  }
+]

@@ -1,0 +1,30 @@
+{
+  "item001": {
+    "title": "Blue Denim Jacket",
+    "description": "A classic blue denim jacket",
+    "semantic_category": "jackets",
+    "category_id": "12",
+    "url_name": "blue-denim-jacket"
+  },
+  "item002": {
+    "title": "White T-Shirt",
+    "description": "A plain white t-shirt",
+    "semantic_category": "tops",
+    "category_id": "5",
+    "url_name": "white-t-shirt"
+  },
+  "item003": {
+    "title": "Black Skinny Jeans",
+    "description": "Slim fit black jeans",
+    "semantic_category": "bottoms",
+    "category_id": "8",
+    "url_name": "black-skinny-jeans"
+  },
+  "item004": {
+    "title": "White Sneakers",
+    "description": "",
+    "semantic_category": "shoes",
+    "category_id": "15",
+    "url_name": "white-sneakers"
+  }
+}

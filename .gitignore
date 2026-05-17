@@ -9,7 +9,7 @@ venv/
 .mypy_cache/
 
 # Data, embeddings, model checkpoints
-data/
+/data/
 !data/.gitkeep
 *.pt
 *.pth

@@ -283,18 +283,34 @@ class Trainer:
             # Validation
             val_auc = self._validate()
 
-            # Track best
+            # Track best and save checkpoint immediately when improved
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
                 best_state = {
                     k: v.cpu().clone() for k, v in self.model.state_dict().items()
                 }
+                # Save best checkpoint eagerly so it survives early termination
+                torch.save(best_state, version_dir / "model.pt")
+                meta_interim = {
+                    "version": version_dir.name,
+                    "epochs": epoch,
+                    "best_val_auc": best_val_auc,
+                    "hidden_dim": settings.hidden_dim,
+                    "num_layers": settings.num_layers,
+                    "num_heads": settings.num_heads,
+                    "in_dim": 896,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                (version_dir / "meta.json").write_text(
+                    json.dumps(meta_interim, indent=2)
+                )
 
             print(
                 f"Epoch {epoch:03d}/{settings.epochs} | "
                 f"loss={mean_loss:.4f} | "
                 f"val_auc={val_auc:.4f} | "
-                f"best_auc={best_val_auc:.4f}"
+                f"best_auc={best_val_auc:.4f}",
+                flush=True,
             )
 
             if settings.wandb_enabled:
@@ -308,7 +324,7 @@ class Trainer:
                     }
                 )
 
-        # Save best checkpoint
+        # Final checkpoint save (may already be written per-epoch above)
         if best_state is not None:
             torch.save(best_state, version_dir / "model.pt")
         else:

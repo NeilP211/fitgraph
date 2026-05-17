@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fitgraph.data.polyvore import Item, Outfit, load_item_metadata, load_outfits
+from fitgraph.data.polyvore import Item, load_item_metadata, load_outfits
 
 FIXTURES = Path(__file__).parent.parent / "fixtures"
 METADATA_FILE = FIXTURES / "metadata_sample.json"

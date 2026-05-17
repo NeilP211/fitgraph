@@ -1,10 +1,7 @@
 """Tests for fitgraph.data.splits — split loading, subsetting, and disjointness."""
 
 import json
-import random
 from pathlib import Path
-
-import pytest
 
 from fitgraph.data.polyvore import Outfit
 from fitgraph.data.splits import load_splits
@@ -17,12 +14,17 @@ from fitgraph.data.splits import load_splits
 def _make_outfit_json(outfit_ids: list[str]) -> list[dict]:
     """Return a minimal outfit JSON list with 2 items each."""
     return [
-        {"set_id": oid, "items": [{"item_id": f"i_{oid}_1", "index": 1}, {"item_id": f"i_{oid}_2", "index": 2}]}
+        {
+            "set_id": oid,
+            "items": [{"item_id": f"i_{oid}_1", "index": 1}, {"item_id": f"i_{oid}_2", "index": 2}],
+        }
         for oid in outfit_ids
     ]
 
 
-def _write_splits(tmp_path: Path, train_ids: list[str], valid_ids: list[str], test_ids: list[str]) -> Path:
+def _write_splits(
+    tmp_path: Path, train_ids: list[str], valid_ids: list[str], test_ids: list[str]
+) -> Path:
     """Write disjoint/{train,valid,test}.json into tmp_path/disjoint and return tmp_path."""
     disjoint = tmp_path / "disjoint"
     disjoint.mkdir(parents=True, exist_ok=True)

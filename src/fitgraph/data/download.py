@@ -6,7 +6,6 @@ import os
 import zipfile
 from pathlib import Path
 
-
 _KAGGLE_SLUG = "yiitcandeime/polyvore"
 _SENTINEL = "polyvore-outfit-dataset/polyvore_outfits/disjoint/train.json"
 

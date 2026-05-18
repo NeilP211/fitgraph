@@ -96,21 +96,24 @@ class TestSchemaIdempotency:
 
 class TestSearchItemsByTag:
     def test_returns_matching_items(self, session):
-        _seed_item(session, "tag_test_001", title="wool sweater", cat="tops")
+        # Unique token so assertions hold whether or not the real catalog
+        # has been seeded into the shared database.
+        _seed_item(session, "tag_test_001", title="zqxuniqueknit pullover", cat="tops")
         _seed_item(session, "tag_test_002", title="silk blouse", cat="tops")
         _seed_item(session, "tag_test_003", title="denim jeans", cat="bottoms")
 
-        results = search_items_by_tag(session, "sweater")
+        results = search_items_by_tag(session, "zqxuniqueknit")
         ids = [item.id for item in results]
         assert "tag_test_001" in ids
         assert "tag_test_003" not in ids
 
     def test_ranks_best_match_first(self, session):
-        # 'jacket' appears in both title and category for _004 → higher rank
-        _seed_item(session, "rank_test_004", title="leather jacket", cat="jacket")
-        _seed_item(session, "rank_test_005", title="casual top", cat="jacket")
+        # Unique token so ranking is deterministic regardless of seeded catalog.
+        # The token appears in both title and category for _004 → higher rank.
+        _seed_item(session, "rank_test_004", title="zqxrankterm coat", cat="zqxrankterm")
+        _seed_item(session, "rank_test_005", title="zqxrankterm top", cat="tops")
 
-        results = search_items_by_tag(session, "jacket")
+        results = search_items_by_tag(session, "zqxrankterm")
         assert len(results) >= 2
         # _004 should be ranked higher (title + category both match)
         assert results[0].id == "rank_test_004"

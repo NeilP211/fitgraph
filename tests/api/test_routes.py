@@ -231,11 +231,12 @@ class TestHealthz:
 
 class TestCatalogSearch:
     def test_search_returns_matching_items(self, client, db_session):
-        _seed_item(db_session, "srch_001", "red linen shirt", "tops")
+        # Unique token so the match is isolated from any seeded real catalog.
+        _seed_item(db_session, "srch_001", "zqxuniquegarment linen top", "tops")
         _seed_item(db_session, "srch_002", "blue denim jeans", "bottoms")
         db_session.flush()
 
-        resp = client.get("/catalog/search", params={"q": "shirt"})
+        resp = client.get("/catalog/search", params={"q": "zqxuniquegarment"})
         assert resp.status_code == 200
         data = resp.json()
         ids = [it["item_id"] for it in data["items"]]

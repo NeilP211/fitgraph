@@ -5,7 +5,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from fitgraph.training.loss import info_nce
+from fitgraph.models.type_aware import TypeAwareScorer
+from fitgraph.training.loss import info_nce, type_aware_info_nce
 
 
 def _norm(x: torch.Tensor) -> torch.Tensor:
@@ -102,3 +103,58 @@ def test_loss_temperature_effect() -> None:
     # Both should be finite positive values
     assert torch.isfinite(loss_high_temp), "High-temp loss not finite"
     assert torch.isfinite(loss_low_temp), "Low-temp loss not finite"
+
+
+# ---------------------------------------------------------------------------
+# type_aware_info_nce
+# ---------------------------------------------------------------------------
+
+
+def test_type_aware_info_nce_is_finite_scalar() -> None:
+    """type_aware_info_nce returns a finite scalar."""
+    torch.manual_seed(0)
+    b, d, m = 8, 32, 10
+    scorer = TypeAwareScorer(num_spaces=4, dim=d)
+    anchor = _norm(torch.randn(b, d))
+    positive = _norm(torch.randn(b, d))
+    negative = _norm(torch.randn(m, d))
+    space_ids = torch.randint(0, 4, (b, b + m))
+    loss = type_aware_info_nce(
+        anchor, positive, negative, space_ids, scorer, temperature=0.1
+    )
+    assert loss.ndim == 0
+    assert torch.isfinite(loss)
+    assert float(loss.detach()) > 0.0
+
+
+def test_type_aware_info_nce_low_loss_for_aligned_pairs() -> None:
+    """When positives equal anchors and negatives are random, loss is low."""
+    torch.manual_seed(1)
+    b, d, m = 16, 32, 8
+    scorer = TypeAwareScorer(num_spaces=3, dim=d)
+    emb = _norm(torch.randn(b, d))
+    negative = _norm(torch.randn(m, d))
+    space_ids = torch.zeros((b, b + m), dtype=torch.long)
+    loss = type_aware_info_nce(
+        emb, emb.clone(), negative, space_ids, scorer, temperature=0.1
+    )
+    # At init the scorer is ~plain cosine; identical pairs separate well.
+    assert float(loss.detach()) < 1.5
+
+
+def test_type_aware_info_nce_gradients_flow_to_scorer() -> None:
+    """Backprop reaches both the embeddings and the scorer masks."""
+    torch.manual_seed(2)
+    b, d, m = 6, 24, 5
+    scorer = TypeAwareScorer(num_spaces=4, dim=d)
+    anchor = _norm(torch.randn(b, d)).requires_grad_(True)
+    positive = _norm(torch.randn(b, d))
+    negative = _norm(torch.randn(m, d))
+    space_ids = torch.randint(0, 4, (b, b + m))
+    loss = type_aware_info_nce(
+        anchor, positive, negative, space_ids, scorer, temperature=0.1
+    )
+    loss.backward()
+    assert scorer.masks.grad is not None
+    assert scorer.masks.grad.abs().sum() > 0
+    assert anchor.grad is not None

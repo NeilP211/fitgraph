@@ -12,7 +12,16 @@ import torch
 
 from fitgraph.config import Settings
 from fitgraph.data.polyvore import Outfit
+from fitgraph.models.type_aware import TypeSpaceIndex
 from fitgraph.training.trainer import Trainer
+
+# A small synthetic type system for the trainer tests.
+_FAKE_TYPESPACES: list[tuple[str, str]] = [
+    ("tops", "bottoms"),
+    ("tops", "shoes"),
+    ("bottoms", "shoes"),
+]
+_FAKE_TYPES = ["tops", "bottoms", "shoes"]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,6 +82,15 @@ def _make_patched_settings(tmp_path: Path, **overrides) -> Settings:
     return PatchedSettings(**defaults)
 
 
+def _make_item_types(all_ids: list[str], seed: int = 0) -> dict[str, str]:
+    """Assign a fake coarse type to each synthetic item (round-robin)."""
+    rng = np.random.default_rng(seed)
+    return {
+        iid: _FAKE_TYPES[int(rng.integers(0, len(_FAKE_TYPES)))]
+        for iid in all_ids
+    }
+
+
 def _make_trainer(tmp_path: Path, **setting_overrides) -> Trainer:
     fused, clip, all_ids, train_outfits, valid_outfits = _make_synthetic_data()
     settings = _make_patched_settings(tmp_path, **setting_overrides)
@@ -83,6 +101,8 @@ def _make_trainer(tmp_path: Path, **setting_overrides) -> Trainer:
         train_outfits=train_outfits,
         valid_outfits=valid_outfits,
         settings=settings,
+        item_types=_make_item_types(all_ids),
+        type_index=TypeSpaceIndex(_FAKE_TYPESPACES),
     )
 
 
@@ -139,16 +159,26 @@ def test_trainer_checkpoint_contents() -> None:
 
         version_dir = Path(results["version_dir"])
 
-        # Check state dict is loadable
+        # Checkpoint is a combined dict: {"hgat": ..., "scorer": ...}
         state = torch.load(version_dir / "model.pt", weights_only=True)
-        assert isinstance(state, dict), "model.pt should be a state dict"
-        assert len(state) > 0, "State dict is empty"
+        assert isinstance(state, dict), "model.pt should be a dict"
+        assert "hgat" in state and "scorer" in state, (
+            "checkpoint must store both hgat and scorer state dicts"
+        )
+        assert len(state["hgat"]) > 0, "HGAT state dict is empty"
+        assert "masks" in state["scorer"], "scorer state dict missing masks"
+
+        # type_index.json reconstructs the type system
+        type_payload = json.loads((version_dir / "type_index.json").read_text())
+        assert "type_index" in type_payload
+        assert "item_types" in type_payload
 
         # Check meta.json
         meta = json.loads((version_dir / "meta.json").read_text())
         required_keys = {
             "version", "epochs_run", "best_val_auc", "hidden_dim",
-            "num_layers", "num_heads", "in_dim", "edge_dropout", "timestamp",
+            "num_layers", "num_heads", "in_dim", "edge_dropout",
+            "num_spaces", "timestamp",
         }
         assert required_keys.issubset(meta.keys()), (
             f"meta.json missing keys: {required_keys - meta.keys()}"
@@ -156,6 +186,7 @@ def test_trainer_checkpoint_contents() -> None:
         assert meta["hidden_dim"] == 32
         assert meta["in_dim"] == 896
         assert meta["edge_dropout"] == 0.3
+        assert meta["num_spaces"] == len(_FAKE_TYPESPACES) + 1
 
 
 def test_trainer_val_auc_computed() -> None:
@@ -218,3 +249,59 @@ def test_trainer_subgraph_build() -> None:
         if ei.shape[1] > 0:
             assert ei[0].max() < n_garments, "Garment edge index out of range"
             assert ei[1].max() < n_outfits, "Outfit edge index out of range"
+
+
+def test_trainer_has_jointly_optimised_scorer() -> None:
+    """The trainer builds a TypeAwareScorer and the optimizer covers it."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
+
+        # Scorer exists with the right number of subspaces.
+        assert trainer.scorer.num_spaces == len(_FAKE_TYPESPACES) + 1
+
+        # Optimizer parameter set is the union of HGAT + scorer params.
+        opt_params = {
+            id(p) for group in trainer.optimizer.param_groups for p in group["params"]
+        }
+        for p in trainer.model.parameters():
+            assert id(p) in opt_params
+        for p in trainer.scorer.parameters():
+            assert id(p) in opt_params
+
+
+def test_trainer_scorer_masks_updated_by_training() -> None:
+    """Joint training updates the TypeAwareScorer mask parameters."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        trainer = _make_trainer(tmp_path)
+        masks_before = trainer.scorer.masks.detach().clone()
+
+        trainer.fit()
+
+        masks_after = trainer.scorer.masks.detach()
+        assert not torch.allclose(masks_before, masks_after), (
+            "scorer masks should change after joint training"
+        )
+        assert torch.isfinite(masks_after).all()
+
+
+def test_trainer_works_without_explicit_type_system() -> None:
+    """Omitting item_types/type_index falls back to a single general space."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        fused, clip, all_ids, train_outfits, valid_outfits = _make_synthetic_data()
+        settings = _make_patched_settings(tmp_path)
+        trainer = Trainer(
+            fused_tensor=fused,
+            clip_tensor=clip,
+            all_ids=all_ids,
+            train_outfits=train_outfits,
+            valid_outfits=valid_outfits,
+            settings=settings,
+        )
+        # Single fallback space only.
+        assert trainer.scorer.num_spaces == 1
+        results = trainer.fit()
+        for loss in results["epoch_losses"]:
+            assert math.isfinite(loss)

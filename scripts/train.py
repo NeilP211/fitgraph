@@ -20,10 +20,24 @@ from fitgraph.config import settings as default_settings
 from fitgraph.data.splits import load_splits
 from fitgraph.graph.builder import build_hetero_graph
 from fitgraph.models.hgat import HGAT
+from fitgraph.models.type_aware import TypeAwareScorer, TypeSpaceIndex
 from fitgraph.training.trainer import Trainer
 
 # Polyvore root relative to the project (data/raw/polyvore-outfit-dataset/polyvore_outfits)
 _POLYVORE_ROOT = Path("data/raw/polyvore-outfit-dataset/polyvore_outfits")
+_TYPESPACES_P = _POLYVORE_ROOT / "disjoint" / "typespaces.p"
+_ITEM_METADATA = _POLYVORE_ROOT / "polyvore_item_metadata.json"
+
+
+def load_item_types() -> dict[str, str]:
+    """Load {item_id -> semantic_category} from polyvore_item_metadata.json."""
+    import json  # noqa: PLC0415
+
+    raw = json.loads(_ITEM_METADATA.read_text())
+    return {
+        iid: (meta.get("semantic_category", "") or "")
+        for iid, meta in raw.items()
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,8 +98,15 @@ def main() -> None:
     print(f"  train={len(train_outfits)}, valid={len(valid_outfits)}, test={len(test_outfits)}")
 
     # ------------------------------------------------------------------
-    # 3. Create and run trainer
+    # 3. Load type system + create and run trainer
     # ------------------------------------------------------------------
+    print("Loading type system (typespaces.p + item metadata) ...")
+    type_index = TypeSpaceIndex.from_file(_TYPESPACES_P)
+    all_item_types = load_item_types()
+    # Restrict the type map to items we actually have embeddings for.
+    item_types = {iid: all_item_types.get(iid, "") for iid in npz_ids}
+    print(f"  type subspaces: {type_index.num_spaces}")
+
     trainer = Trainer(
         fused_tensor=fused_tensor,
         clip_tensor=clip_tensor,
@@ -93,6 +114,8 @@ def main() -> None:
         train_outfits=train_outfits,
         valid_outfits=valid_outfits,
         settings=settings,
+        item_types=item_types,
+        type_index=type_index,
     )
     print(
         f"Valid pos pairs: {len(trainer._valid_pairs)}, "
@@ -121,9 +144,19 @@ def main() -> None:
         num_heads=settings.num_heads,
         dropout=settings.dropout,
     ).to(device)
-    state_dict = torch.load(version_dir / "model.pt", map_location=device, weights_only=True)
-    best_model.load_state_dict(state_dict)
+    # Checkpoint is a combined dict: {"hgat": ..., "scorer": ...}.
+    ckpt = torch.load(version_dir / "model.pt", map_location=device, weights_only=True)
+    best_model.load_state_dict(ckpt["hgat"])
     best_model.eval()
+
+    # Reconstruct the type-aware scorer (not needed for embedding export, but
+    # confirms the checkpoint round-trips and is loadable).
+    best_scorer = TypeAwareScorer(
+        num_spaces=type_index.num_spaces,
+        dim=settings.hidden_dim,
+    ).to(device)
+    best_scorer.load_state_dict(ckpt["scorer"])
+    best_scorer.eval()
 
     # 4a. catalog_embeddings.npz: TRAIN items via graph forward (leakage-free)
     print("\nExporting catalog embeddings (train items, graph forward) ...")

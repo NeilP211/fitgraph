@@ -20,12 +20,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
 from torch_geometric.data import HeteroData
 
 from fitgraph.models.hgat import HGAT
-from fitgraph.training.loss import info_nce
+from fitgraph.models.type_aware import TypeAwareScorer, TypeSpaceIndex
+from fitgraph.training.loss import type_aware_info_nce
 from fitgraph.training.negatives import mine_hard_negatives
 
 if TYPE_CHECKING:
@@ -50,6 +50,13 @@ class Trainer:
         List of Outfit objects from the valid split.
     settings:
         Configuration object.
+    item_types:
+        Mapping ``item_id -> coarse semantic_category``. Items missing from the
+        map are assigned the ``"__unknown__"`` type, which routes any of their
+        pairs to the fallback "general" subspace.
+    type_index:
+        A :class:`TypeSpaceIndex` describing the type-pair subspaces. If
+        omitted, a tiny single-space index is constructed (useful for tests).
     """
 
     def __init__(
@@ -60,6 +67,8 @@ class Trainer:
         train_outfits: list[Outfit],
         valid_outfits: list[Outfit],
         settings: Settings,
+        item_types: dict[str, str] | None = None,
+        type_index: TypeSpaceIndex | None = None,
     ) -> None:
         self.settings = settings
         self.train_outfits = train_outfits
@@ -80,6 +89,21 @@ class Trainer:
         self.fused_tensor = fused_tensor.to(self.device)   # (N, 896)
         self.clip_tensor = clip_tensor.to(self.device)     # (N, 512)
 
+        # ----- Type system: per-item types + type-pair subspace index -----
+        self._unknown_type = "__unknown__"
+        self.item_types: dict[str, str] = item_types or {}
+        if type_index is None:
+            # Minimal fallback: a single "general" space. num_spaces == 1.
+            type_index = TypeSpaceIndex([])
+        self.type_index: TypeSpaceIndex = type_index
+        # Precompute the subspace id for every item index against every other
+        # item index lazily; here just cache per-item type strings.
+        self._idx_type: list[str] = [
+            self.item_types.get(iid, self._unknown_type) for iid in all_ids
+        ]
+        # Cache type-pair -> space id to avoid repeated string lookups.
+        self._pair_space_cache: dict[tuple[str, str], int] = {}
+
         # Build the model
         self.model = HGAT(
             in_dim=fused_tensor.shape[1],
@@ -89,7 +113,16 @@ class Trainer:
             dropout=settings.dropout,
         ).to(self.device)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=settings.lr)
+        # Type-aware scorer: jointly trained with the HGAT.
+        self.scorer = TypeAwareScorer(
+            num_spaces=self.type_index.num_spaces,
+            dim=settings.hidden_dim,
+        ).to(self.device)
+
+        self.optimizer = torch.optim.Adam(
+            list(self.model.parameters()) + list(self.scorer.parameters()),
+            lr=settings.lr,
+        )
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer,
             T_max=settings.epochs,
@@ -114,6 +147,35 @@ class Trainer:
         if torch.cuda.is_available():
             return "cuda"
         return "cpu"
+
+    def _space_for_types(self, type_a: str, type_b: str) -> int:
+        """Cached lookup of the type-pair subspace id."""
+        key = (type_a, type_b) if type_a <= type_b else (type_b, type_a)
+        space = self._pair_space_cache.get(key)
+        if space is None:
+            space = self.type_index.space_of(type_a, type_b)
+            self._pair_space_cache[key] = space
+        return space
+
+    def _space_ids_for_global_pairs(
+        self, a_global: list[int], b_global: list[int]
+    ) -> torch.Tensor:
+        """Subspace ids for paired lists of global item indices, shape ``(B,)``."""
+        ids = [
+            self._space_for_types(self._idx_type[a], self._idx_type[b])
+            for a, b in zip(a_global, b_global, strict=True)
+        ]
+        return torch.tensor(ids, dtype=torch.long, device=self.device)
+
+    def _space_id_matrix(
+        self, anchor_types: list[str], candidate_types: list[str]
+    ) -> torch.Tensor:
+        """Subspace id matrix for anchors x candidates, shape ``(B, C)``."""
+        rows = [
+            [self._space_for_types(at, ct) for ct in candidate_types]
+            for at in anchor_types
+        ]
+        return torch.tensor(rows, dtype=torch.long, device=self.device)
 
     def _build_cooccur_map(
         self, outfits: list[Outfit]
@@ -259,36 +321,79 @@ class Trainer:
         version_dir.mkdir(parents=True)
         return version_dir
 
+    def _write_type_index(self, version_dir: Path) -> None:
+        """Persist the TypeSpaceIndex + item_id->type map to ``type_index.json``.
+
+        This is everything needed (alongside ``model.pt``) to reconstruct
+        type-aware scoring at inference time.
+        """
+        payload = {
+            "type_index": self.type_index.to_dict(),
+            "item_types": self.item_types,
+            "unknown_type": self._unknown_type,
+        }
+        (version_dir / "type_index.json").write_text(json.dumps(payload))
+
+    def _checkpoint_state(self) -> dict:
+        """Build the combined HGAT + scorer checkpoint dict (CPU tensors)."""
+        return {
+            "hgat": {k: v.cpu().clone() for k, v in self.model.state_dict().items()},
+            "scorer": {
+                k: v.cpu().clone() for k, v in self.scorer.state_dict().items()
+            },
+        }
+
     # ------------------------------------------------------------------
     # Validation: HONEST inductive only (no graph, no leakage)
     # ------------------------------------------------------------------
 
     def _validate(self) -> float:
-        """Compute val AUC using ONLY embed_features (no graph context)."""
+        """Compute val AUC using ONLY embed_features (no graph context).
+
+        Pairs are scored with the type-aware scorer in the correct type-pair
+        subspace — the same scoring used at inference time.
+        """
         if not self._valid_pairs or not self._valid_neg_pairs:
             return 0.5
 
         self.model.eval()
+        self.scorer.eval()
         with torch.no_grad():
             # Embed ALL items purely via feature projection (inductive path)
             all_emb = self.model.embed_features(self.fused_tensor)  # (N, D)
 
-        labels: list[int] = []
-        sims: list[float] = []
+            labels: list[int] = []
+            sims: list[float] = []
 
-        # Positive pairs
-        a_idx = torch.tensor([p[0] for p in self._valid_pairs], device=self.device)
-        b_idx = torch.tensor([p[1] for p in self._valid_pairs], device=self.device)
-        pos_sims = F.cosine_similarity(all_emb[a_idx], all_emb[b_idx]).cpu().tolist()
-        labels.extend([1] * len(pos_sims))
-        sims.extend(pos_sims)
+            # Positive pairs
+            a_idx = torch.tensor([p[0] for p in self._valid_pairs], device=self.device)
+            b_idx = torch.tensor([p[1] for p in self._valid_pairs], device=self.device)
+            pos_space = self._space_ids_for_global_pairs(
+                [p[0] for p in self._valid_pairs],
+                [p[1] for p in self._valid_pairs],
+            )
+            pos_sims = self.scorer.score_pairs(
+                all_emb[a_idx], all_emb[b_idx], pos_space
+            ).cpu().tolist()
+            labels.extend([1] * len(pos_sims))
+            sims.extend(pos_sims)
 
-        # Negative pairs
-        na_idx = torch.tensor([p[0] for p in self._valid_neg_pairs], device=self.device)
-        nb_idx = torch.tensor([p[1] for p in self._valid_neg_pairs], device=self.device)
-        neg_sims = F.cosine_similarity(all_emb[na_idx], all_emb[nb_idx]).cpu().tolist()
-        labels.extend([0] * len(neg_sims))
-        sims.extend(neg_sims)
+            # Negative pairs
+            na_idx = torch.tensor(
+                [p[0] for p in self._valid_neg_pairs], device=self.device
+            )
+            nb_idx = torch.tensor(
+                [p[1] for p in self._valid_neg_pairs], device=self.device
+            )
+            neg_space = self._space_ids_for_global_pairs(
+                [p[0] for p in self._valid_neg_pairs],
+                [p[1] for p in self._valid_neg_pairs],
+            )
+            neg_sims = self.scorer.score_pairs(
+                all_emb[na_idx], all_emb[nb_idx], neg_space
+            ).cpu().tolist()
+            labels.extend([0] * len(neg_sims))
+            sims.extend(neg_sims)
 
         if len(set(labels)) < 2:
             return 0.5
@@ -316,8 +421,13 @@ class Trainer:
         version_dir = self._next_version_dir()
         epoch_losses: list[float] = []
 
+        # Persist the type system once up-front so the checkpoint is
+        # self-contained even if no epoch improves on the initial AUC.
+        self._write_type_index(version_dir)
+
         for epoch in range(1, settings.epochs + 1):
             self.model.train()
+            self.scorer.train()
 
             # Shuffle train outfits for this epoch
             outfits = list(self.train_outfits)
@@ -409,12 +519,34 @@ class Trainer:
                     settings.num_hard_negatives,
                 )  # (B, k)
 
-                extra_neg_emb = z[hard_neg_local_idx.view(-1)]  # (B*k, D)
+                hard_neg_local_flat = hard_neg_local_idx.view(-1)  # (B*k,)
+                extra_neg_emb = z[hard_neg_local_flat]  # (B*k, D)
 
-                loss = info_nce(
+                # ---- Type-pair subspace ids for every anchor x candidate ----
+                # Candidate pool order: [positives ; hard negatives].
+                anchor_types = [
+                    self._idx_type[self.id_to_idx[local_ids[i]]]
+                    for i in anchor_local
+                ]
+                positive_types = [
+                    self._idx_type[self.id_to_idx[local_ids[i]]]
+                    for i in positive_local
+                ]
+                neg_local_list = hard_neg_local_flat.cpu().tolist()
+                negative_types = [
+                    self._idx_type[self.id_to_idx[local_ids[i]]]
+                    for i in neg_local_list
+                ]
+                candidate_space_ids = self._space_id_matrix(
+                    anchor_types, positive_types + negative_types
+                )  # (B, B + B*k)
+
+                loss = type_aware_info_nce(
                     anchor_emb,
                     positive_emb,
-                    extra_negatives=extra_neg_emb,
+                    extra_neg_emb,
+                    candidate_space_ids,
+                    self.scorer,
                     temperature=settings.temperature,
                 )
 
@@ -432,7 +564,7 @@ class Trainer:
 
             if val_auc > best_val_auc:
                 best_val_auc = val_auc
-                best_state = {k: v.cpu().clone() for k, v in self.model.state_dict().items()}
+                best_state = self._checkpoint_state()
                 torch.save(best_state, version_dir / "model.pt")
                 meta_interim = {
                     "version": version_dir.name,
@@ -443,6 +575,7 @@ class Trainer:
                     "num_heads": settings.num_heads,
                     "in_dim": self.fused_tensor.shape[1],
                     "edge_dropout": settings.edge_dropout,
+                    "num_spaces": self.type_index.num_spaces,
                     "timestamp": datetime.now(UTC).isoformat(),
                 }
                 (version_dir / "meta.json").write_text(json.dumps(meta_interim, indent=2))
@@ -467,10 +600,7 @@ class Trainer:
         if best_state is not None:
             torch.save(best_state, version_dir / "model.pt")
         else:
-            torch.save(
-                {k: v.cpu() for k, v in self.model.state_dict().items()},
-                version_dir / "model.pt",
-            )
+            torch.save(self._checkpoint_state(), version_dir / "model.pt")
 
         meta = {
             "version": version_dir.name,
@@ -481,6 +611,7 @@ class Trainer:
             "num_heads": settings.num_heads,
             "in_dim": self.fused_tensor.shape[1],
             "edge_dropout": settings.edge_dropout,
+            "num_spaces": self.type_index.num_spaces,
             "timestamp": datetime.now(UTC).isoformat(),
         }
         (version_dir / "meta.json").write_text(json.dumps(meta, indent=2))

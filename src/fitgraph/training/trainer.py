@@ -469,10 +469,12 @@ class Trainer:
                 if len(anchor_local) < 2:
                     continue
 
-                # Randomly subsample pairs to avoid O(n^2) blowup
-                max_pairs = settings.batch_size * 4
-                if len(anchor_local) > max_pairs:
-                    perm = rng.sample(range(len(anchor_local)), max_pairs)
+                # Cap pairs per step to bound B and the candidate pool C,
+                # keeping peak memory of score_matrix under control.
+                if len(anchor_local) > settings.max_pairs_per_step:
+                    perm = rng.sample(
+                        range(len(anchor_local)), settings.max_pairs_per_step
+                    )
                     anchor_local = [anchor_local[i] for i in perm]
                     positive_local = [positive_local[i] for i in perm]
 

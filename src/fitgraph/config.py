@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     num_hard_negatives: int = 5
     edge_dropout: float = 0.4
     seed: int = 42
+    max_pairs_per_step: int = 2048
 
     # Infrastructure
     database_url: str = "postgresql+psycopg://fitgraph:fitgraph@localhost:5432/fitgraph"

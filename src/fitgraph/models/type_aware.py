@@ -174,9 +174,21 @@ class TypeAwareScorer(nn.Module):
         return (pa * pb).sum(dim=-1)  # (B,)
 
     def score_matrix(
-        self, anchors: Tensor, candidates: Tensor, space_ids: Tensor
+        self,
+        anchors: Tensor,
+        candidates: Tensor,
+        space_ids: Tensor,
+        anchor_chunk: int = 256,
     ) -> Tensor:
         """Type-aware cosine similarity for every anchor-candidate pair.
+
+        Memory-bounded implementation: anchors are processed in chunks of at
+        most ``anchor_chunk`` rows so that the peak intermediate tensor is
+        ``(anchor_chunk, C, dim)`` rather than ``(B, C, dim)``.  With the
+        default ``anchor_chunk=256`` and typical C=1500, dim=256, peak memory
+        is ~256 * 1500 * 256 * 4 bytes ≈ 390 MB instead of B * C * dim * 4
+        which can reach tens of GB for large batches.  The numerical result is
+        identical to the non-chunked version.
 
         Parameters
         ----------
@@ -187,16 +199,27 @@ class TypeAwareScorer(nn.Module):
         space_ids:
             Long tensor ``(B, C)`` — the type-pair subspace for each
             anchor-candidate pair.
+        anchor_chunk:
+            Maximum number of anchor rows processed at once.  Controls the
+            peak memory of the intermediate ``(chunk, C, dim)`` projection
+            tensor.  Defaults to 256.
 
         Returns
         -------
         Tensor
             Type-aware cosine similarities, shape ``(B, C)``, in ``[-1, 1]``.
         """
-        proj = self._projection(space_ids)  # (B, C, dim)
-        # Broadcast anchors over C and candidates over B.
-        a = anchors.unsqueeze(1) * proj  # (B, C, dim)
-        c = candidates.unsqueeze(0) * proj  # (B, C, dim)
-        a = F.normalize(a, p=2, dim=-1)
-        c = F.normalize(c, p=2, dim=-1)
-        return (a * c).sum(dim=-1)  # (B, C)
+        B = anchors.size(0)
+        chunks: list[Tensor] = []
+        for start in range(0, B, anchor_chunk):
+            end = min(start + anchor_chunk, B)
+            anc_chunk = anchors[start:end]          # (chunk, dim)
+            sid_chunk = space_ids[start:end]        # (chunk, C)
+            proj = self._projection(sid_chunk)      # (chunk, C, dim)
+            # Broadcast anchor chunk over C, candidates over chunk.
+            a = anc_chunk.unsqueeze(1) * proj       # (chunk, C, dim)
+            c = candidates.unsqueeze(0) * proj      # (chunk, C, dim)
+            a = F.normalize(a, p=2, dim=-1)
+            c = F.normalize(c, p=2, dim=-1)
+            chunks.append((a * c).sum(dim=-1))      # (chunk, C)
+        return torch.cat(chunks, dim=0)             # (B, C)

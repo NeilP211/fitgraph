@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 
 from fitgraph.models.type_aware import TypeAwareScorer, TypeSpaceIndex
+from fitgraph.training.loss import type_aware_info_nce
 
 # A small synthetic typespaces list (positions are subspace ids).
 _FAKE_TYPESPACES: list[tuple[str, str]] = [
@@ -160,3 +161,74 @@ def test_scorer_gradients_flow() -> None:
     out.sum().backward()
     assert scorer.masks.grad is not None
     assert scorer.masks.grad.abs().sum() > 0
+
+
+# ---------------------------------------------------------------------------
+# Realistic-scale regression test — guards against the (B*C*dim) memory blowup
+# ---------------------------------------------------------------------------
+
+
+def test_score_matrix_large_scale_no_memory_blowup() -> None:
+    """score_matrix with B=1024, C=1500, dim=256 completes with correct shape.
+
+    Before the chunked fix, this would materialise a 1024 * 1500 * 256 * 4
+    ≈ 1.6 GB intermediate tensor per call (and much more in a real batch),
+    causing OOM on memory-limited machines.  The chunked implementation keeps
+    peak memory at anchor_chunk * C * dim * 4 ≈ 390 MB.
+    """
+    torch.manual_seed(99)
+    B, C, D = 1024, 1500, 256
+    num_spaces = 67  # realistic polyvore typespace count
+
+    scorer = TypeAwareScorer(num_spaces=num_spaces, dim=D)
+    anchors = F.normalize(torch.randn(B, D), dim=-1)
+    candidates = F.normalize(torch.randn(C, D), dim=-1)
+    space_ids = torch.randint(0, num_spaces, (B, C))
+
+    out = scorer.score_matrix(anchors, candidates, space_ids)
+
+    assert out.shape == (B, C), f"Expected ({B}, {C}), got {out.shape}"
+    assert torch.isfinite(out).all(), "Output contains non-finite values"
+    assert (out >= -1.0001).all() and (out <= 1.0001).all(), (
+        "Cosine similarities out of [-1, 1]"
+    )
+
+    # Also exercise type_aware_info_nce at scale: B anchors, B positives, M=476
+    # negatives so that B + M = 1500 == C (same size as above).
+    M = C - B  # 476
+    negative_emb = F.normalize(torch.randn(M, D), dim=-1)
+    # candidate_space_ids shape: (B, B + M) == (B, C)
+    loss = type_aware_info_nce(
+        anchors,
+        candidates[:B],       # first B candidates as positives
+        negative_emb,
+        space_ids,            # (B, C) already correct
+        scorer,
+        temperature=0.1,
+    )
+    assert loss.ndim == 0, "type_aware_info_nce should return a scalar"
+    assert torch.isfinite(loss), "type_aware_info_nce loss is not finite"
+
+
+def test_score_matrix_chunked_matches_unchunked() -> None:
+    """Chunked result is numerically identical to a single-chunk (unchunked) call."""
+    torch.manual_seed(42)
+    B, C, D = 64, 80, 32
+    num_spaces = 5
+
+    scorer = TypeAwareScorer(num_spaces=num_spaces, dim=D)
+    with torch.no_grad():
+        scorer.masks.add_(0.3 * torch.randn_like(scorer.masks))
+
+    anchors = F.normalize(torch.randn(B, D), dim=-1)
+    candidates = F.normalize(torch.randn(C, D), dim=-1)
+    space_ids = torch.randint(0, num_spaces, (B, C))
+
+    # anchor_chunk > B => single chunk, effectively the old code-path
+    out_single = scorer.score_matrix(anchors, candidates, space_ids, anchor_chunk=B + 1)
+    # anchor_chunk much smaller => multiple chunks
+    out_multi = scorer.score_matrix(anchors, candidates, space_ids, anchor_chunk=16)
+
+    assert torch.allclose(out_single, out_multi, atol=1e-5), (
+        "Chunked and unchunked score_matrix results differ"
+    )

@@ -126,9 +126,12 @@ class ModelService:
         self._model.eval()
         self._scorer.eval()
 
-        # Load type index + item->type map
+        # Load type index + item->type map. The file written by training is
+        # {"type_index": <TypeSpaceIndex.to_dict()>, "item_types": {...},
+        # "unknown_type": ...}; tolerate a flat to_dict() payload too.
         type_index_data = json.loads((model_dir / "type_index.json").read_text())
-        self._type_index = TypeSpaceIndex.from_dict(type_index_data)
+        index_payload = type_index_data.get("type_index", type_index_data)
+        self._type_index = TypeSpaceIndex.from_dict(index_payload)
         self._item_types = type_index_data.get("item_types", {})
 
         self._version = meta.get("version", model_dir.name)

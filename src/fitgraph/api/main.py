@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from fitgraph.api.routes import router
 from fitgraph.api.serving import get_model_service, latest_model_dir
+from fitgraph.db.session import get_engine, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,40 @@ def get_p99_latency_ms() -> float | None:
 # ---------------------------------------------------------------------------
 
 
+def _ensure_demo_user() -> None:
+    """Upsert the demo user (id=1) so the frontend's DEMO_USER_ID=1 is always valid."""
+    from fitgraph.db.models import User  # noqa: PLC0415
+
+    try:
+        engine = get_engine()
+        session_factory = get_session(engine)
+        session = session_factory()
+        try:
+            existing = session.get(User, 1)
+            if existing is None:
+                # Use INSERT ... ON CONFLICT DO NOTHING via raw SQL to avoid
+                # autoincrement sequence skipping when we specify id explicitly.
+                from sqlalchemy import text  # noqa: PLC0415
+
+                session.execute(
+                    text(
+                        "INSERT INTO users (id, email) VALUES (1, 'demo@fitgraph.local')"
+                        " ON CONFLICT DO NOTHING"
+                    )
+                )
+                session.commit()
+                logger.info("Seeded demo user id=1")
+            else:
+                logger.debug("Demo user id=1 already exists")
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            logger.warning("Could not seed demo user: %s", exc)
+        finally:
+            session.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not connect to DB to seed demo user: %s", exc)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     svc = get_model_service()
@@ -57,6 +92,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "No model checkpoint found at startup — endpoints requiring the model "
             "will return 503 until a checkpoint is available."
         )
+    _ensure_demo_user()
     yield
     # Shutdown — nothing to clean up for now
 

@@ -43,7 +43,14 @@ from fitgraph.models.type_aware import TypeAwareScorer, TypeSpaceIndex  # noqa: 
 POLYVORE_ROOT = _ROOT / "data" / "raw" / "polyvore-outfit-dataset" / "polyvore_outfits"
 DISJOINT = POLYVORE_ROOT / "disjoint"
 GRAPH_PT = _ROOT / "data" / "graph" / "graph.pt"
-MODEL_DIR = _ROOT / "data" / "models" / "v4"
+MODEL_DIR = max(
+    (
+        d
+        for d in (_ROOT / "data" / "models").glob("v*")
+        if (d / "model.pt").exists() and (d / "inductive_embeddings.npz").exists()
+    ),
+    key=lambda d: int(d.name[1:]),
+)
 INDUCTIVE_NPZ = MODEL_DIR / "inductive_embeddings.npz"
 MODEL_PT = MODEL_DIR / "model.pt"
 TYPE_INDEX_JSON = MODEL_DIR / "type_index.json"
@@ -511,7 +518,7 @@ def main() -> None:
 
     # --- Step 5: Save results JSON ---
     results = {
-        "model": "v4",
+        "model": MODEL_DIR.name,
         "embeddings": "inductive (feature-only, no graph message passing)",
         "scoring": "type-aware (per type-pair subspace)",
         "compatibility_auc": compat_auc,

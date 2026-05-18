@@ -2,6 +2,8 @@
 
 **Outfit compatibility via graph neural networks** — most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). FitGraph learns *compatibility*: what actually goes together in an outfit, by training on how garments are co-worn across 35,140 real Polyvore outfits. It then serves those learned embeddings through a full-stack product — image upload, ranked suggestions, user feedback, and a live retrain loop.
 
+![FitGraph — upload a garment, get compatible suggestions ranked by the type-aware HGAT](docs/assets/screenshot.png)
+
 ---
 
 ## Results
@@ -16,7 +18,7 @@ Evaluated **inductively** and **leakage-free** on the full Polyvore Outfits disj
 | Recall@30 | 0.0095 | Ranking one held-out item against all 152,785 catalog items |
 | Recall@50 | 0.0161 | ~13–49× random baseline |
 | API latency (P99) | ~2 ms | Compatibility/retrieval path, measured locally |
-| Test suite | 194 passing | pytest + ruff clean |
+| Test suite | 202 passing | pytest + ruff clean |
 
 **Dataset:** Polyvore Outfits (`disjoint` split) — 152,785 items embedded, 35,140 outfits (train 16,995 / valid 3,000 / test 15,145).
 

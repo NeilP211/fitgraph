@@ -1,0 +1,1 @@
+"""FitGraph FastAPI inference service."""

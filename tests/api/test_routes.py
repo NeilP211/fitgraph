@@ -465,3 +465,74 @@ class TestSuggest:
                 files={"image": ("t.jpg", img_bytes, "image/jpeg")},
             )
         assert resp.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# GET /images/{item_id}
+# ---------------------------------------------------------------------------
+
+
+class TestImages:
+    """Tests for the /images/{item_id} endpoint."""
+
+    def _make_client(self):
+        """Return a TestClient without any DB/model overrides (not needed for images)."""
+        from fastapi.testclient import TestClient  # noqa: PLC0415
+
+        from fitgraph.api.main import create_app  # noqa: PLC0415
+
+        app = create_app()
+        return TestClient(app, raise_server_exceptions=True)
+
+    def test_image_not_found_returns_404(self):
+        """A bogus item_id should return 404."""
+        client = self._make_client()
+        resp = client.get("/images/this_item_does_not_exist_xyzzy")
+        assert resp.status_code == 404
+
+    def test_image_exists_returns_200(self, tmp_path):
+        """When the images directory contains a JPEG, the endpoint returns it."""
+        import fitgraph.api.routes as routes_module  # noqa: PLC0415
+
+        # Build a fake images dir with one image
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        fake_item_id = "test_img_001"
+        img_bytes = _make_image_bytes()
+        (images_dir / f"{fake_item_id}.jpg").write_bytes(img_bytes)
+
+        original_dir = routes_module._IMAGES_DIR
+        try:
+            routes_module._IMAGES_DIR = images_dir
+            client = self._make_client()
+            resp = client.get(f"/images/{fake_item_id}")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith("image/jpeg")
+        finally:
+            routes_module._IMAGES_DIR = original_dir
+
+    def test_image_exists_on_disk_returns_200(self):
+        """If the real dataset images dir exists, fetch the first image found."""
+        from pathlib import Path  # noqa: PLC0415
+
+        real_images_dir = (
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / "raw"
+            / "polyvore-outfit-dataset"
+            / "polyvore_outfits"
+            / "images"
+        )
+        if not real_images_dir.is_dir():
+            pytest.skip("Real dataset images directory not present")
+
+        # Pick the first JPEG in the directory
+        jpegs = sorted(real_images_dir.glob("*.jpg"))
+        if not jpegs:
+            pytest.skip("No JPEG images found in dataset images dir")
+
+        item_id = jpegs[0].stem
+        client = self._make_client()
+        resp = client.get(f"/images/{item_id}")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("image/jpeg")

@@ -10,6 +10,7 @@ from typing import Annotated
 
 import numpy as np
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -306,3 +307,29 @@ def catalog_search(
         ],
         total=len(items),
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /images/{item_id}
+# ---------------------------------------------------------------------------
+
+_IMAGES_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "data"
+    / "raw"
+    / "polyvore-outfit-dataset"
+    / "polyvore_outfits"
+    / "images"
+)
+
+
+@router.get("/images/{item_id}")
+def serve_item_image(item_id: str) -> FileResponse:
+    """Serve the JPEG image for a catalog item by its item_id."""
+    # Sanitise: item_id must not contain path separators
+    if "/" in item_id or "\\" in item_id or ".." in item_id:
+        raise HTTPException(status_code=400, detail="Invalid item_id")
+    image_path = _IMAGES_DIR / f"{item_id}.jpg"
+    if not image_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Image not found: {item_id}")
+    return FileResponse(str(image_path), media_type="image/jpeg")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -234,15 +235,46 @@ def get_outfits(
 def feedback(body: FeedbackRequest, db: DBSession, svc: SvcDep) -> FeedbackResponse:
     """Record user feedback on a suggested item.
 
-    Inserts a :class:`~fitgraph.db.models.Rating` row.
-    Phase 9 will route this through Redis Streams instead.
+    Publishes the rating to a Redis Stream (``fitgraph:feedback``) so that the
+    retrain worker can consume it asynchronously.  If Redis is unreachable the
+    handler falls back to a direct Postgres insert so the endpoint remains
+    resilient — callers cannot distinguish the two paths from the response.
+
+    Returns
+    -------
+    FeedbackResponse
+        ``{"status": "queued"}`` when the event was published to Redis, or
+        ``{"status": "ok"}`` when written directly to Postgres.
     """
+    event = {
+        "user_id": body.user_id,
+        "query_item_id": body.query_item_id,
+        "suggested_item_id": body.suggested_item_id,
+        "rating": body.rating,
+        "model_version": svc.current_version,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+
+    try:
+        from fitgraph.feedback.stream import get_redis, publish_rating  # noqa: PLC0415
+
+        redis_client = get_redis()
+        redis_client.ping()
+        publish_rating(redis_client, event)
+        return FeedbackResponse(status="queued")
+    except Exception as exc:
+        logger.warning(
+            "Redis unavailable (%s); falling back to direct DB insert for feedback", exc
+        )
+
+    # Fallback: insert directly into the ratings table
     rating = Rating(
         user_id=body.user_id,
         query_item_id=body.query_item_id,
         suggested_item_id=body.suggested_item_id,
         rating=body.rating,
         model_version=svc.current_version,
+        created_at=datetime.now(UTC),
     )
     db.add(rating)
     return FeedbackResponse(status="ok")

@@ -335,7 +335,8 @@ class TestFeedback:
             },
         )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
+        # Phase 9: returns "queued" when Redis is up, "ok" when falling back to DB
+        assert resp.json()["status"] in {"ok", "queued"}
 
     def test_feedback_negative_rating(self, client, db_session):
         user_id = _seed_user(db_session, "feedback_neg@example.com")
@@ -351,7 +352,8 @@ class TestFeedback:
             },
         )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "ok"
+        # Phase 9: returns "queued" when Redis is up, "ok" when falling back to DB
+        assert resp.json()["status"] in {"ok", "queued"}
 
 
 # ---------------------------------------------------------------------------

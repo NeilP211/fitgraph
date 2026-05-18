@@ -194,15 +194,18 @@ def test_score_matrix_large_scale_no_memory_blowup() -> None:
     )
 
     # Also exercise type_aware_info_nce at scale: B anchors, B positives, M=476
-    # negatives so that B + M = 1500 == C (same size as above).
+    # negatives so that the negative pool is bounded (peak B*M*dim not B*C*dim).
     M = C - B  # 476
     negative_emb = F.normalize(torch.randn(M, D), dim=-1)
-    # candidate_space_ids shape: (B, B + M) == (B, C)
+    # New signature: separate pos_space_ids (B,) and neg_space_ids (B, M).
+    pos_space_ids = torch.randint(0, num_spaces, (B,))
+    neg_space_ids = torch.randint(0, num_spaces, (B, M))
     loss = type_aware_info_nce(
         anchors,
         candidates[:B],       # first B candidates as positives
         negative_emb,
-        space_ids,            # (B, C) already correct
+        pos_space_ids,
+        neg_space_ids,
         scorer,
         temperature=0.1,
     )

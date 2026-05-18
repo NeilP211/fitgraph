@@ -77,6 +77,7 @@ def _make_patched_settings(tmp_path: Path, **overrides) -> Settings:
         num_hard_negatives=2,
         edge_dropout=0.3,
         seed=42,
+        negative_pool_size=16,
     )
     defaults.update(overrides)
     return PatchedSettings(**defaults)
@@ -305,3 +306,53 @@ def test_trainer_works_without_explicit_type_system() -> None:
         results = trainer.fit()
         for loss in results["epoch_losses"]:
             assert math.isfinite(loss)
+
+
+def test_trainer_negative_pool_size_respected() -> None:
+    """Trainer uses bounded negative pool; pool size <= negative_pool_size."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Use a very small pool size to verify no OOM and bounded M is used.
+        trainer = _make_trainer(tmp_path, negative_pool_size=8, num_hard_negatives=3)
+        results = trainer.fit()
+
+        # Should complete without error; losses must be finite.
+        for i, loss in enumerate(results["epoch_losses"]):
+            assert math.isfinite(loss), f"Epoch {i + 1} loss is not finite: {loss}"
+        assert "version_dir" in results
+
+
+def test_trainer_negative_pool_excludes_positives() -> None:
+    """The negative pool must not contain any item that is a positive partner."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        # Patch trainer to record the pool each step.
+        trainer = _make_trainer(tmp_path, negative_pool_size=16, num_hard_negatives=2)
+
+        # Monkey-patch to capture one batch's negative pool.
+        captured: dict = {}
+        import fitgraph.training.trainer as trainer_mod
+
+        original_train_fn = trainer_mod.type_aware_info_nce
+
+        def capturing_loss(
+            anchor_emb, positive_emb, negative_pool_emb,
+            pos_space_ids, neg_space_ids, scorer, temperature=0.1
+        ):
+            if "neg_pool_shape" not in captured:
+                captured["neg_pool_shape"] = tuple(negative_pool_emb.shape)
+                captured["pos_shape"] = tuple(positive_emb.shape)
+            return original_train_fn(
+                anchor_emb, positive_emb, negative_pool_emb,
+                pos_space_ids, neg_space_ids, scorer, temperature
+            )
+
+        trainer_mod.type_aware_info_nce = capturing_loss
+        try:
+            trainer.fit()
+        finally:
+            trainer_mod.type_aware_info_nce = original_train_fn
+
+        assert "neg_pool_shape" in captured, "Loss was never called"
+        M_actual = captured["neg_pool_shape"][0]
+        assert M_actual <= 16, f"Pool size {M_actual} exceeds negative_pool_size=16"

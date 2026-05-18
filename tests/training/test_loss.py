@@ -108,6 +108,24 @@ def test_loss_temperature_effect() -> None:
 # ---------------------------------------------------------------------------
 # type_aware_info_nce
 # ---------------------------------------------------------------------------
+#
+# New contract (bounded negative pool):
+#   anchor_emb   (B, D)
+#   positive_emb (B, D)
+#   negative_pool_emb  (M, D)   — shared bounded pool
+#   pos_space_ids      (B,)     — subspace for each anchor-positive pair
+#   neg_space_ids      (B, M)   — subspace for each anchor x negative pair
+#   scorer, temperature
+
+
+def _make_space_ids(
+    b: int, m: int, num_spaces: int, seed: int = 0
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (pos_space_ids (B,), neg_space_ids (B, M))."""
+    torch.manual_seed(seed)
+    pos = torch.randint(0, num_spaces, (b,))
+    neg = torch.randint(0, num_spaces, (b, m))
+    return pos, neg
 
 
 def test_type_aware_info_nce_is_finite_scalar() -> None:
@@ -118,9 +136,9 @@ def test_type_aware_info_nce_is_finite_scalar() -> None:
     anchor = _norm(torch.randn(b, d))
     positive = _norm(torch.randn(b, d))
     negative = _norm(torch.randn(m, d))
-    space_ids = torch.randint(0, 4, (b, b + m))
+    pos_sids, neg_sids = _make_space_ids(b, m, 4)
     loss = type_aware_info_nce(
-        anchor, positive, negative, space_ids, scorer, temperature=0.1
+        anchor, positive, negative, pos_sids, neg_sids, scorer, temperature=0.1
     )
     assert loss.ndim == 0
     assert torch.isfinite(loss)
@@ -134,9 +152,10 @@ def test_type_aware_info_nce_low_loss_for_aligned_pairs() -> None:
     scorer = TypeAwareScorer(num_spaces=3, dim=d)
     emb = _norm(torch.randn(b, d))
     negative = _norm(torch.randn(m, d))
-    space_ids = torch.zeros((b, b + m), dtype=torch.long)
+    pos_sids = torch.zeros(b, dtype=torch.long)
+    neg_sids = torch.zeros((b, m), dtype=torch.long)
     loss = type_aware_info_nce(
-        emb, emb.clone(), negative, space_ids, scorer, temperature=0.1
+        emb, emb.clone(), negative, pos_sids, neg_sids, scorer, temperature=0.1
     )
     # At init the scorer is ~plain cosine; identical pairs separate well.
     assert float(loss.detach()) < 1.5
@@ -150,11 +169,38 @@ def test_type_aware_info_nce_gradients_flow_to_scorer() -> None:
     anchor = _norm(torch.randn(b, d)).requires_grad_(True)
     positive = _norm(torch.randn(b, d))
     negative = _norm(torch.randn(m, d))
-    space_ids = torch.randint(0, 4, (b, b + m))
+    pos_sids, neg_sids = _make_space_ids(b, m, 4, seed=2)
     loss = type_aware_info_nce(
-        anchor, positive, negative, space_ids, scorer, temperature=0.1
+        anchor, positive, negative, pos_sids, neg_sids, scorer, temperature=0.1
     )
     loss.backward()
     assert scorer.masks.grad is not None
     assert scorer.masks.grad.abs().sum() > 0
     assert anchor.grad is not None
+
+
+def test_type_aware_info_nce_memory_regression() -> None:
+    """B=1024, M=256, dim=256 backward completes; guards training OOM regression.
+
+    Peak compute tensor is (B, M, dim) = 1024 * 256 * 256 * 4 bytes ≈ 268 MB,
+    far below the 18 GiB MPS limit that the old B*C*dim formulation hit.
+    """
+    torch.manual_seed(99)
+    B, M, D = 1024, 256, 256
+    num_spaces = 5
+    scorer = TypeAwareScorer(num_spaces=num_spaces, dim=D)
+    anchor = _norm(torch.randn(B, D))
+    positive = _norm(torch.randn(B, D))
+    negative = _norm(torch.randn(M, D))
+    pos_sids = torch.randint(0, num_spaces, (B,))
+    neg_sids = torch.randint(0, num_spaces, (B, M))
+
+    loss = type_aware_info_nce(
+        anchor, positive, negative, pos_sids, neg_sids, scorer, temperature=0.1
+    )
+    loss.backward()
+
+    assert loss.ndim == 0, "Loss must be a scalar"
+    assert torch.isfinite(loss), f"Loss must be finite, got {float(loss)}"
+    assert scorer.masks.grad is not None, "Scorer masks must receive gradients"
+    assert scorer.masks.grad.abs().sum() > 0, "Scorer mask gradients must be non-zero"

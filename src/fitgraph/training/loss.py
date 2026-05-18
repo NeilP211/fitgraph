@@ -61,34 +61,43 @@ def info_nce(
 def type_aware_info_nce(
     anchor_emb: Tensor,
     positive_emb: Tensor,
-    negative_emb: Tensor,
-    candidate_space_ids: Tensor,
+    negative_pool_emb: Tensor,
+    pos_space_ids: Tensor,
+    neg_space_ids: Tensor,
     scorer: TypeAwareScorer,
     temperature: float = 0.1,
 ) -> Tensor:
-    """InfoNCE loss whose logits are computed in type-pair-specific subspaces.
+    """InfoNCE loss with a BOUNDED shared negative pool (memory-efficient form).
 
-    For each anchor, the candidate pool is ``[positives ; negatives]`` shared
-    across the whole batch.  The compatibility logit of an anchor against a
-    candidate is the :class:`~fitgraph.models.type_aware.TypeAwareScorer`
-    similarity computed in the type-pair subspace of that anchor-candidate pair.
-    The positive sits on the diagonal and is the cross-entropy target.
+    Peak compute is ``B * M * dim`` (not ``B * B * dim``), where M is the size
+    of the shared negative pool.  With B=1024, M=256, dim=256 the intermediate
+    tensor is ``1024 * 256 * 256 * 4 bytes ≈ 268 MB``, well within MPS limits.
+
+    For each anchor i the logit layout is::
+
+        [pos_score_i  |  neg_score_i_0, ..., neg_score_i_{M-1}]   shape (1+M,)
+
+    The cross-entropy target is index 0 (the positive) for every anchor.
 
     Parameters
     ----------
     anchor_emb:
-        Shared anchor embeddings, shape ``(B, D)``.
+        Anchor embeddings, shape ``(B, D)``.
     positive_emb:
-        Shared positive embeddings, shape ``(B, D)``; row i is the positive of
-        anchor i.
-    negative_emb:
-        Shared (hard) negative embeddings, shape ``(M, D)``, shared across all
-        anchors.
-    candidate_space_ids:
-        Long tensor ``(B, B + M)`` — the type-pair subspace id for each
-        anchor against each candidate in ``[positives ; negatives]``.
+        Positive embeddings, shape ``(B, D)``; row i is the positive of anchor i.
+    negative_pool_emb:
+        Shared negative-pool embeddings, shape ``(M, D)``.  The same M items
+        are used as negatives for every anchor.
+    pos_space_ids:
+        Long tensor ``(B,)`` — type-pair subspace id for each anchor-positive
+        pair.  Passed to :meth:`~fitgraph.models.type_aware.TypeAwareScorer.score_pairs`.
+    neg_space_ids:
+        Long tensor ``(B, M)`` — type-pair subspace id for each
+        anchor-negative pair.  Passed to
+        :meth:`~fitgraph.models.type_aware.TypeAwareScorer.score_matrix`.
     scorer:
-        The :class:`TypeAwareScorer` used to compute type-aware similarities.
+        The :class:`~fitgraph.models.type_aware.TypeAwareScorer` used to compute
+        type-aware similarities.
     temperature:
         Softmax temperature.
 
@@ -97,8 +106,15 @@ def type_aware_info_nce(
     Tensor
         Scalar cross-entropy loss.
     """
-    candidates = torch.cat([positive_emb, negative_emb], dim=0)  # (B+M, D)
-    logits = scorer.score_matrix(anchor_emb, candidates, candidate_space_ids)
-    logits = logits / temperature  # (B, B+M)
-    targets = torch.arange(anchor_emb.size(0), device=anchor_emb.device)
+    # Positive scores: one per anchor, shape (B,)
+    pos_scores = scorer.score_pairs(anchor_emb, positive_emb, pos_space_ids)
+
+    # Negative scores: (B, M) via score_matrix with bounded M
+    neg_scores = scorer.score_matrix(anchor_emb, negative_pool_emb, neg_space_ids)
+
+    # Logits: positives in column 0, then negatives.  Shape (B, 1+M).
+    logits = torch.cat([pos_scores.unsqueeze(1), neg_scores], dim=1) / temperature
+
+    # Target is always index 0 (the positive column).
+    targets = torch.zeros(anchor_emb.size(0), dtype=torch.long, device=anchor_emb.device)
     return F.cross_entropy(logits, targets)

@@ -484,7 +484,19 @@ class Trainer:
                 anchor_emb = z[anchor_idx]    # (B, D)
                 positive_emb = z[positive_idx]  # (B, D)
 
-                # Hard negative mining using CLIP features from the batch's items
+                # ---- Build a BOUNDED shared negative pool of M items ----
+                # M = settings.negative_pool_size (e.g. 256).
+                # The pool is populated with CLIP-hard negatives first, then
+                # padded with random in-batch items if needed, deduped, and
+                # stripped of any item that is a positive partner of an anchor.
+                M = settings.negative_pool_size
+
+                # Positive partner global ids (must never appear in pool).
+                positive_global_ids: set[str] = {
+                    local_ids[i] for i in positive_local
+                }
+
+                # CLIP features for the pool (all local items) and anchors.
                 global_indices = torch.tensor(
                     [self.id_to_idx[iid] for iid in local_ids],
                     dtype=torch.long,
@@ -499,14 +511,12 @@ class Trainer:
                     )
                 ]  # (B, 512)
 
-                # Build forbidden sets (co-worn partners in local index space)
-                # local_set maps local_idx -> item_id
+                # Build forbidden sets (co-worn partners in local index space).
                 local_set = {v: k for k, v in local_id_to_idx.items()}
                 forbidden: list[set[int]] = []
                 for a_local_i in anchor_local:
                     a_id = local_set[a_local_i]
                     co_ids = self._cooccur_ids.get(a_id, set())
-                    # Map co_ids to their local indices (those in the batch)
                     forbidden_local = {
                         local_id_to_idx[co_id]
                         for co_id in co_ids
@@ -521,11 +531,39 @@ class Trainer:
                     settings.num_hard_negatives,
                 )  # (B, k)
 
-                hard_neg_local_flat = hard_neg_local_idx.view(-1)  # (B*k,)
-                extra_neg_emb = z[hard_neg_local_flat]  # (B*k, D)
+                # Collect unique hard-negative local indices (deduplicated).
+                hard_neg_flat = hard_neg_local_idx.view(-1).cpu().tolist()
+                pool_local_ids_ordered: list[int] = []
+                seen_pool: set[int] = set()
+                for li in hard_neg_flat:
+                    if li not in seen_pool:
+                        # Exclude items that are positive partners of any anchor.
+                        if local_ids[li] not in positive_global_ids:
+                            pool_local_ids_ordered.append(li)
+                            seen_pool.add(li)
+                    if len(pool_local_ids_ordered) >= M:
+                        break
 
-                # ---- Type-pair subspace ids for every anchor x candidate ----
-                # Candidate pool order: [positives ; hard negatives].
+                # Pad with random non-positive in-batch items if pool is too small.
+                if len(pool_local_ids_ordered) < M:
+                    all_local = list(range(len(local_ids)))
+                    rng.shuffle(all_local)
+                    for li in all_local:
+                        if li not in seen_pool and local_ids[li] not in positive_global_ids:
+                            pool_local_ids_ordered.append(li)
+                            seen_pool.add(li)
+                        if len(pool_local_ids_ordered) >= M:
+                            break
+
+                # Trim to M (may be smaller if local batch is tiny).
+                pool_local_ids_ordered = pool_local_ids_ordered[:M]
+
+                pool_idx_t = torch.tensor(
+                    pool_local_ids_ordered, dtype=torch.long, device=self.device
+                )
+                neg_pool_emb = z[pool_idx_t]  # (actual_M, D)
+
+                # ---- Type-pair subspace ids ----
                 anchor_types = [
                     self._idx_type[self.id_to_idx[local_ids[i]]]
                     for i in anchor_local
@@ -534,20 +572,30 @@ class Trainer:
                     self._idx_type[self.id_to_idx[local_ids[i]]]
                     for i in positive_local
                 ]
-                neg_local_list = hard_neg_local_flat.cpu().tolist()
-                negative_types = [
+                pool_types = [
                     self._idx_type[self.id_to_idx[local_ids[i]]]
-                    for i in neg_local_list
+                    for i in pool_local_ids_ordered
                 ]
-                candidate_space_ids = self._space_id_matrix(
-                    anchor_types, positive_types + negative_types
-                )  # (B, B + B*k)
+
+                # pos_space_ids: (B,) — one subspace id per anchor-positive pair
+                pos_space_ids_list = [
+                    self._space_for_types(at, pt)
+                    for at, pt in zip(anchor_types, positive_types, strict=True)
+                ]
+                pos_space_ids = torch.tensor(
+                    pos_space_ids_list, dtype=torch.long, device=self.device
+                )
+                # neg_space_ids: (B, actual_M)
+                neg_space_ids = self._space_id_matrix(
+                    anchor_types, pool_types
+                )  # (B, actual_M)
 
                 loss = type_aware_info_nce(
                     anchor_emb,
                     positive_emb,
-                    extra_neg_emb,
-                    candidate_space_ids,
+                    neg_pool_emb,
+                    pos_space_ids,
+                    neg_space_ids,
                     self.scorer,
                     temperature=settings.temperature,
                 )

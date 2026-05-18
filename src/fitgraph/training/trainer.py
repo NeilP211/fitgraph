@@ -90,6 +90,11 @@ class Trainer:
         ).to(self.device)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=settings.lr)
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer,
+            T_max=settings.epochs,
+            eta_min=settings.lr * 0.05,
+        )
 
         # Co-occurrence map: item_id -> set of co-worn item_ids (TRAIN ONLY)
         self._cooccur_ids: dict[str, set[str]] = self._build_cooccur_map(train_outfits)
@@ -442,11 +447,15 @@ class Trainer:
                 }
                 (version_dir / "meta.json").write_text(json.dumps(meta_interim, indent=2))
 
+            # Step cosine LR schedule
+            self.scheduler.step()
+
             print(
                 f"Epoch {epoch:03d}/{settings.epochs} | "
                 f"loss={mean_loss:.4f} | "
                 f"val_auc={val_auc:.4f} | "
-                f"best_auc={best_val_auc:.4f}",
+                f"best_auc={best_val_auc:.4f} | "
+                f"lr={self.scheduler.get_last_lr()[0]:.2e}",
                 flush=True,
             )
 

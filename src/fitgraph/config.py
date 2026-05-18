@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     # Training hyperparameters
     lr: float = 1e-3
-    epochs: int = 30
+    epochs: int = 40
     batch_size: int = 256
     temperature: float = 0.1
     num_hard_negatives: int = 5

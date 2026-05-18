@@ -99,7 +99,7 @@ def test_isolated_node_residual(tiny_model: HGAT) -> None:
 
     Garment node at index 5 has no edges in tiny_data. Because of the residual
     connection and add_self_loops=False, the message-passing update is zero, so
-    h_L == h0. Thus forward() and embed_features() should agree for this node.
+    h_L == encoder(x). Thus forward() and embed_features() should agree for this node.
     """
     tiny_model.eval()
     data = make_tiny_graph()  # garment 5 is isolated
@@ -120,6 +120,26 @@ def test_isolated_node_residual(tiny_model: HGAT) -> None:
     )
     assert cosine_sim > 0.99, (
         f"Isolated node cosine similarity to embed_features: {cosine_sim:.4f} (expected > 0.99)"
+    )
+
+
+def test_encoder_is_nonlinear(tiny_model: HGAT) -> None:
+    """encoder produces nonlinear output (not a simple linear map)."""
+    torch.manual_seed(3)
+    x1 = torch.randn(1, 896)
+    x2 = torch.randn(1, 896)
+    x_mid = 0.5 * (x1 + x2)
+
+    tiny_model.eval()
+    with torch.no_grad():
+        # If encoder were purely linear, encoder(0.5*(x1+x2)) == 0.5*(encoder(x1)+encoder(x2))
+        h_mid = tiny_model.encoder(x_mid)
+        h_avg = 0.5 * (tiny_model.encoder(x1) + tiny_model.encoder(x2))
+
+    # They should NOT be identical (nonlinearity breaks midpoint equality)
+    # LayerNorm alone already breaks it
+    assert not torch.allclose(h_mid, h_avg, atol=1e-6), (
+        "encoder appears to be purely linear — expected nonlinearity"
     )
 
 

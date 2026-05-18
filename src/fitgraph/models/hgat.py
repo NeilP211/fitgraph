@@ -10,24 +10,25 @@ from torch_geometric.nn import GATConv, HeteroConv
 
 
 class HGAT(nn.Module):
-    """Heterogeneous GAT with residual connections for garment embedding.
+    """Heterogeneous GAT with a deep nonlinear inductive encoder.
 
     Architecture
     ------------
-    1. ``input_proj``: Linear(in_dim, hidden_dim) applied to both garment and outfit
-       node features. ``h0 = input_proj(x)``.
-    2. ``num_layers`` of heterogeneous GAT: each layer is a HeteroConv over the two
-       relations, each using GATConv(hidden_dim, hidden_dim, heads=num_heads,
-       concat=False, add_self_loops=False). Applied with a residual:
-       ``h = h + ELU(conv(h, edge_index_dict))`` then dropout.
-    3. ``out_head``: Linear(hidden_dim, hidden_dim) producing the final garment
-       embedding, L2-normalised.
+    1. ``encoder``: deep MLP applied to raw features for both node types.
+       ``Linear(in_dim → 512) → LayerNorm → GELU → Dropout →
+         Linear(512 → hidden_dim) → LayerNorm → GELU → Dropout``
+       Produces the base item representation ``h = encoder(x)``.
+    2. ``num_layers`` of heterogeneous GAT applied with a RESIDUAL:
+       ``h = h + dropout(ELU(GATConv_per_relation(h)))``.
+    3. Final garment ``h`` is L2-normalised.
 
     Cold-start / isolated nodes
     ---------------------------
-    Because of residuals and add_self_loops=False, a garment with no edges has
-    h_L == h0. So ``embed_features(x)`` (which computes out_head(input_proj(x)))
-    is in the same representation space as full-graph embeddings.
+    Because of residuals and add_self_loops=False, a garment with no edges
+    receives zero message-passing updates, so ``h_L == encoder(x)``.
+    ``embed_features(x)`` returns ``L2_normalize(encoder(x))``, which equals
+    ``forward`` on an isolated garment node.  The two paths stay in the same
+    representation space.
     """
 
     def __init__(
@@ -41,10 +42,21 @@ class HGAT(nn.Module):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        self.dropout = dropout
+        self.dropout_p = dropout
 
-        # Shared input projection for both node types
-        self.input_proj = nn.Linear(in_dim, hidden_dim)
+        mid_dim = 512
+
+        # Deep nonlinear encoder shared by both node types
+        self.encoder = nn.Sequential(
+            nn.Linear(in_dim, mid_dim),
+            nn.LayerNorm(mid_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(mid_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
 
         # Stack of HeteroConv layers
         self.convs = nn.ModuleList()
@@ -71,17 +83,14 @@ class HGAT(nn.Module):
             )
             self.convs.append(conv)
 
-        # Output head
-        self.out_head = nn.Linear(hidden_dim, hidden_dim)
-
         self.elu = nn.ELU()
         self._init_weights()
 
     def _init_weights(self) -> None:
-        nn.init.xavier_uniform_(self.input_proj.weight)
-        nn.init.zeros_(self.input_proj.bias)
-        nn.init.xavier_uniform_(self.out_head.weight)
-        nn.init.zeros_(self.out_head.bias)
+        for module in self.encoder.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                nn.init.zeros_(module.bias)
 
     def forward(self, data: HeteroData) -> Tensor:
         """Full-graph forward pass.
@@ -96,40 +105,37 @@ class HGAT(nn.Module):
         Tensor
             L2-normalised garment embeddings of shape ``(num_garments, hidden_dim)``.
         """
-        # Project both node types into hidden space
-        h_garment = self.input_proj(data["garment"].x)
-        h_outfit = self.input_proj(data["outfit"].x)
+        # Encode both node types through the deep MLP
+        h_garment = self.encoder(data["garment"].x)
+        h_outfit = self.encoder(data["outfit"].x)
 
         h_dict = {"garment": h_garment, "outfit": h_outfit}
 
         # Apply GAT layers with residual connections
         for conv in self.convs:
             conv_out = conv(h_dict, data.edge_index_dict)
-            # Residual: h = h + ELU(conv_out), then dropout
             new_h_dict: dict[str, Tensor] = {}
             for node_type in h_dict:
                 if node_type in conv_out:
-                    new_h_dict[node_type] = h_dict[node_type] + self.elu(
-                        conv_out[node_type]
+                    # Residual: h = h + dropout(ELU(conv_out))
+                    delta = F.dropout(
+                        self.elu(conv_out[node_type]),
+                        p=self.dropout_p,
+                        training=self.training,
                     )
+                    new_h_dict[node_type] = h_dict[node_type] + delta
                 else:
                     new_h_dict[node_type] = h_dict[node_type]
-            # Apply dropout to all node types
-            h_dict = {
-                k: F.dropout(v, p=self.dropout, training=self.training)
-                for k, v in new_h_dict.items()
-            }
+            h_dict = new_h_dict
 
-        # Output head on garment embeddings only
-        z = self.out_head(h_dict["garment"])
-        return F.normalize(z, p=2, dim=-1)
+        return F.normalize(h_dict["garment"], p=2, dim=-1)
 
     def embed_features(self, x: Tensor) -> Tensor:
-        """Embed raw feature vectors without graph context (cold-start path).
+        """Embed raw feature vectors without graph context (cold-start / inductive path).
 
-        Computes ``out_head(input_proj(x))``, L2-normalised. This is equivalent
-        to the full-graph path for an isolated garment node (no edges = no
-        message passing, so h_L == h0 due to residuals).
+        Returns ``L2_normalize(encoder(x))``.  For an isolated garment node
+        (no edges), this is identical to what ``forward`` would return, because
+        the GAT residual adds zero message-passing update.
 
         Parameters
         ----------
@@ -141,6 +147,5 @@ class HGAT(nn.Module):
         Tensor
             L2-normalised embeddings of shape ``(N, hidden_dim)``.
         """
-        h = self.input_proj(x)
-        z = self.out_head(h)
-        return F.normalize(z, p=2, dim=-1)
+        h = self.encoder(x)
+        return F.normalize(h, p=2, dim=-1)

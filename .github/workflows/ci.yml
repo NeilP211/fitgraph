@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: fitgraph
+          POSTGRES_PASSWORD: fitgraph
+          POSTGRES_DB: fitgraph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fitgraph -d fitgraph"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check src tests scripts
+
+      - name: Run tests
+        env:
+          FITGRAPH_DATABASE_URL: postgresql+psycopg://fitgraph:fitgraph@localhost:5432/fitgraph
+          FITGRAPH_REDIS_URL: redis://localhost:6379/0
+        run: pytest -q
+
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Node dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint (eslint)
+        working-directory: web
+        run: npm run lint
+
+      - name: Build
+        working-directory: web
+        run: npm run build

@@ -131,6 +131,11 @@ class OutfitHistoryResponse(BaseModel):
     outfits: list[OutfitHistoryEntry]
 
 
+class DeleteOutfitResponse(BaseModel):
+    status: str
+    outfit_id: int
+
+
 # ---------------------------------------------------------------------------
 # /feedback
 # ---------------------------------------------------------------------------

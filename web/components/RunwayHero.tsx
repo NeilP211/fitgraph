@@ -17,12 +17,14 @@ function catalogImg(id: string) {
 /**
  * A handful of hardcoded item IDs used as runway "models".
  * These are real items from the catalog; a mix of shoes + tops.
+ * Positioned on the flanks (far left and far right) so they don't
+ * collide with the center editorial text overlay.
  */
 const RUNWAY_ITEMS = [
-  { id: "100094985", x: "18%", delay: 0 },
-  { id: "100116756", x: "38%", delay: 0.15 },
-  { id: "100058266", x: "58%", delay: 0.08 },
-  { id: "100305898", x: "76%", delay: 0.22 },
+  { id: "100094985", x: "7%",  delay: 0 },
+  { id: "100116756", x: "16%", delay: 0.15 },
+  { id: "100058266", x: "84%", delay: 0.08 },
+  { id: "100305898", x: "93%", delay: 0.22 },
 ];
 
 /**
@@ -96,7 +98,7 @@ export default function RunwayHero() {
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden"
-        style={{ height: "220px" }}
+        style={{ height: "380px" }}
         aria-hidden="true"
       >
         {/* Background warm stage-light gradient — gold/sepia, no pink */}
@@ -245,6 +247,7 @@ export default function RunwayHero() {
         </motion.div>
 
         {/* ── Catalog item floats on catwalk ── */}
+        {/* z-index 1 keeps thumbnails behind the text overlay (z-10 in page.tsx) */}
         {!reduced &&
           RUNWAY_ITEMS.map((item) => (
             <motion.div
@@ -256,6 +259,7 @@ export default function RunwayHero() {
                 width: "64px",
                 height: "64px",
                 transform: "translateX(-50%)",
+                zIndex: 1,
               }}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 0.82, y: [10, 0, 6, 0] }}

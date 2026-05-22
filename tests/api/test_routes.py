@@ -327,6 +327,84 @@ class TestOutfits:
 
 
 # ---------------------------------------------------------------------------
+# DELETE /outfits/{outfit_id}
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteOutfit:
+    def _create_outfit(self, client, db_session, email: str, name: str = "Test Look"):
+        user_id = _seed_user(db_session, email)
+        _seed_item(db_session, f"del_{email[:6]}_001", "shirt", "tops")
+        db_session.flush()
+        resp = client.post(
+            "/outfits",
+            json={"user_id": user_id, "name": name, "item_ids": [f"del_{email[:6]}_001"]},
+        )
+        assert resp.status_code == 201
+        return user_id, resp.json()["outfit_id"]
+
+    def test_delete_outfit_returns_200(self, client, db_session):
+        user_id, outfit_id = self._create_outfit(
+            client, db_session, "del_ok@example.com"
+        )
+        resp = client.delete(f"/outfits/{outfit_id}", params={"user_id": user_id})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "deleted"
+        assert data["outfit_id"] == outfit_id
+
+    def test_delete_outfit_no_longer_in_history(self, client, db_session):
+        user_id, outfit_id = self._create_outfit(
+            client, db_session, "del_gone@example.com", "Vanishing Look"
+        )
+        # Confirm it exists first
+        get_resp = client.get("/outfits", params={"user_id": user_id})
+        assert any(o["outfit_id"] == outfit_id for o in get_resp.json()["outfits"])
+
+        # Delete it
+        del_resp = client.delete(f"/outfits/{outfit_id}", params={"user_id": user_id})
+        assert del_resp.status_code == 200
+
+        # Should be gone from history
+        get_after = client.get("/outfits", params={"user_id": user_id})
+        assert get_after.status_code == 200
+        assert not any(o["outfit_id"] == outfit_id for o in get_after.json()["outfits"])
+
+    def test_delete_bogus_outfit_404(self, client, db_session):
+        user_id = _seed_user(db_session, "del_bogus@example.com")
+        db_session.flush()
+        resp = client.delete("/outfits/999999999", params={"user_id": user_id})
+        assert resp.status_code == 404
+
+    def test_delete_another_users_outfit_404(self, client, db_session):
+        # Create two users first, then build the outfit
+        user_id_a = _seed_user(db_session, "del_xowner@example.com")
+        user_id_b = _seed_user(db_session, "del_xother@example.com")
+        _seed_item(db_session, "del_xown_001", "blouse", "tops")
+        db_session.flush()
+
+        post_resp = client.post(
+            "/outfits",
+            json={"user_id": user_id_a, "name": "Owner Look", "item_ids": ["del_xown_001"]},
+        )
+        assert post_resp.status_code == 201
+        outfit_id = post_resp.json()["outfit_id"]
+
+        # user_b tries to delete user_a's outfit — must be 404.
+        # Note: the HTTPException causes _override_db to rollback the session
+        # savepoint, so we verify the outfit exists via the session directly
+        # before the delete attempt.
+        from fitgraph.db.models import Outfit as OutfitModel  # noqa: PLC0415
+
+        assert db_session.get(OutfitModel, outfit_id) is not None, (
+            "Outfit should exist before cross-user delete attempt"
+        )
+
+        resp = client.delete(f"/outfits/{outfit_id}", params={"user_id": user_id_b})
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # /feedback
 # ---------------------------------------------------------------------------
 

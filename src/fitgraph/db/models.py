@@ -69,7 +69,11 @@ class Outfit(Base):
 
     user: Mapped[User | None] = relationship("User", back_populates="outfits")
     outfit_items: Mapped[list[OutfitItem]] = relationship(
-        "OutfitItem", back_populates="outfit", order_by="OutfitItem.position"
+        "OutfitItem",
+        back_populates="outfit",
+        order_by="OutfitItem.position",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 

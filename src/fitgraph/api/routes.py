@@ -23,6 +23,7 @@ from fitgraph.api.schemas import (
     CompatibilityRequest,
     CompatibilityResponse,
     CreateOutfitRequest,
+    DeleteOutfitResponse,
     FeedbackRequest,
     FeedbackResponse,
     HealthResponse,
@@ -191,6 +192,29 @@ def get_outfits(
         for entry in history
     ]
     return OutfitHistoryResponse(outfits=entries)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /outfits/{outfit_id}
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/outfits/{outfit_id}", response_model=DeleteOutfitResponse)
+def delete_outfit(
+    outfit_id: int,
+    db: DBSession,
+    user_id: int = Query(..., description="User ID — must match the outfit owner"),
+) -> DeleteOutfitResponse:
+    """Delete a saved outfit.
+
+    Returns 404 if the outfit does not exist or belongs to a different user.
+    The ``outfit_items`` rows are removed automatically via the FK ON DELETE CASCADE.
+    """
+    outfit = db.get(Outfit, outfit_id)
+    if outfit is None or outfit.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    db.delete(outfit)
+    return DeleteOutfitResponse(status="deleted", outfit_id=outfit_id)
 
 
 # ---------------------------------------------------------------------------

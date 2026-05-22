@@ -17,8 +17,9 @@ export default function HomePage() {
         <RunwayHero />
 
         {/* Editorial overlay — title sits at the runway head (over catwalk stage only) */}
+        {/* z-10 keeps this above the thumbnail floats (z-1 in RunwayHero) */}
         <div
-          className="absolute left-0 right-0 bottom-0 flex flex-col items-center justify-center pb-8 px-6 pointer-events-none"
+          className="absolute left-0 right-0 bottom-0 z-10 flex flex-col items-center justify-center pb-8 px-6 pointer-events-none"
           style={{ top: "34px" }} /* offset past the 34px marquee band */
         >
           {/* Hairline rule above */}

@@ -184,6 +184,21 @@ export async function getOutfits(userId: number): Promise<OutfitHistoryResponse>
   return apiFetch<OutfitHistoryResponse>(`/outfits?user_id=${userId}`);
 }
 
+export interface DeleteOutfitResponse {
+  status: string;
+  outfit_id: number;
+}
+
+export async function deleteOutfit(
+  outfitId: number,
+  userId: number
+): Promise<DeleteOutfitResponse> {
+  return apiFetch<DeleteOutfitResponse>(
+    `/outfits/${outfitId}?user_id=${userId}`,
+    { method: "DELETE" }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // /feedback
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ NOTE: Do NOT run this against the real model output while retraining is in
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -44,6 +45,22 @@ from fitgraph.retrieval.pgvector_store import upsert_embeddings  # noqa: E402
 def _tokenize(text_val: str) -> list[str]:
     """Split a string into lowercase alphanumeric tokens."""
     return [t for t in re.split(r"[^a-zA-Z0-9]+", text_val.lower()) if t]
+
+
+def _display_title(title: str, url_name: str, category: str) -> str:
+    """Best available display name: title, else title-cased url_name, else category.
+
+    ~70% of Polyvore items have an empty ``title`` but a populated ``url_name``
+    slug (e.g. "sacai luck cable knit cardigan"); fall back to that before the
+    bare category so the catalog reads like real products instead of "Untitled".
+    """
+    title = (title or "").strip()
+    if title:
+        return title
+    url_name = (url_name or "").strip()
+    if url_name:
+        return url_name.title()
+    return (category or "").strip().title()
 
 
 def _latest_npz(models_dir: Path) -> Path:
@@ -114,10 +131,12 @@ def main() -> None:
     )
 
     polyvore_items: dict = {}
+    raw_meta: dict = {}
     if metadata_path.exists():
         from fitgraph.data.polyvore import load_item_metadata  # noqa: F811
 
         polyvore_items = load_item_metadata(metadata_path, images_dir)
+        raw_meta = json.loads(metadata_path.read_text())
         print(f"  {len(polyvore_items):,} Polyvore metadata entries loaded")
     else:
         print(f"  WARNING: metadata not found at {metadata_path}; items will have empty metadata")
@@ -138,10 +157,11 @@ def main() -> None:
         for item_id, emb_vec in zip(ids, embs, strict=True):
             meta = polyvore_items.get(item_id)
 
-            title = (meta.title if meta else "") or ""
             description = (meta.description if meta else "") or ""
             category = (meta.category if meta else "") or ""
             image_path = str(meta.image_path) if meta else ""
+            raw = raw_meta.get(item_id, {})
+            title = _display_title(raw.get("title", ""), raw.get("url_name", ""), category)
 
             # Build tags: category + tokenised url_name / item_id
             tags = list({category} | set(_tokenize(item_id))) if category else _tokenize(item_id)

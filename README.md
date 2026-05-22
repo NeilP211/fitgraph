@@ -26,7 +26,7 @@ Evaluated **inductively** and **leakage-free** on the full Polyvore Outfits disj
 
 An early evaluation ran the HGAT `forward` pass over a graph that included test-split outfits. Test garments were embedded via message-passing that incorporated test co-occurrence signal — the very signal the model was supposed to predict. This produced an inflated AUC of ~**0.99**.
 
-The fix was to switch to strict **inductive** evaluation: all test embeddings are produced via `model.embed_features(x)`, which runs only the MLP encoder on image+text features with no graph context. This is exactly what the deployed product does for any garment a user uploads. The reported **0.848** is the honest number.
+The fix was to switch to strict **inductive** evaluation: all test embeddings are produced via `model.embed_features(x)`, which runs only the MLP encoder on image+text features with no graph context. This is exactly how the deployed product embeds every catalog garment it scores at serve time. The reported **0.848** is the honest number.
 
 The gap between 0.99 and 0.848 is not a failure — it is a demonstration of ML rigor. Finding and fixing this kind of leakage is what separates a polished portfolio from a toy benchmark.
 
@@ -121,7 +121,7 @@ See [`docs/architecture.md`](docs/architecture.md) for deep coverage of model in
 
 - **Encoder:** deep nonlinear MLP over fused 896-d features → `Linear(896→512) → LayerNorm → GELU → Dropout → Linear(512→256) → LayerNorm → GELU → Dropout`. Hidden dim 256.
 - **GAT layers:** 2 stacked `HeteroConv` layers, each with separate `GATConv` modules for both edge directions (`garment→outfit`, `outfit→garment`). 4 attention heads, mean-aggregation, residual connections.
-- **Inductive cold-start:** `embed_features(x)` = `L2_norm(encoder(x))`. Identical to `forward` for an isolated node — zero representation gap for freshly uploaded garments.
+- **Inductive cold-start:** `embed_features(x)` = `L2_norm(encoder(x))`. Identical to `forward` for an isolated node — zero representation gap for cold-start garments scored at serve time.
 - **Type-aware subspaces:** 67 learned per-type-pair subspaces (66 from Polyvore `typespaces.p` + 1 fallback) via non-negative masks over shared embeddings, following Vasileva et al. 2018. Compatible items of complementary types score highly even when visually dissimilar.
 - **Training:** InfoNCE contrastive loss, CLIP-mined hard negatives (visually similar but not co-worn), bounded shared negative pool (256 items), mini-batch subgraph training, neighbor dropout (p=0.1), 25 epochs on Apple Silicon MPS.
 

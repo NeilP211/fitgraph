@@ -1,24 +1,87 @@
 @import "tailwindcss";
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Editorial / luxury-magazine palette + typography tokens
+   ───────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
+  /* Color palette */
+  --paper:        #EFE7D4;   /* page background — cream */
+  --surface:      #F8F2E6;   /* cards / panels */
+  --ink:          #221C13;   /* primary text */
+  --ink-soft:     #6E6149;   /* secondary text / labels */
+  --accent:       #A8542F;   /* terracotta — primary actions */
+  --accent-deep:  #8C4222;   /* hover / active */
+  --gold:         #B28A4E;   /* sepia — mid-tier badge */
+  --rule:         #CFC1A4;   /* hairline borders / dividers */
+
+  /* Legacy aliases used by Tailwind @theme below */
+  --background: var(--paper);
+  --foreground: var(--ink);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Tailwind v4 @theme block — exposes tokens as Tailwind classes
+   ───────────────────────────────────────────────────────────────────────────── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-background:   var(--paper);
+  --color-foreground:   var(--ink);
+  --color-paper:        var(--paper);
+  --color-surface:      var(--surface);
+  --color-ink:          var(--ink);
+  --color-ink-soft:     var(--ink-soft);
+  --color-accent:       var(--accent);
+  --color-accent-deep:  var(--accent-deep);
+  --color-gold:         var(--gold);
+  --color-rule:         var(--rule);
+
+  /* Font families */
+  --font-display: var(--font-display-var);
+  --font-body:    var(--font-body-var);
+  --font-script:  var(--font-script-var);
+  --font-sans:    var(--font-body-var), Georgia, serif;
+  --font-mono:    ui-monospace, monospace;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Base styles
+   ───────────────────────────────────────────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body-var), Georgia, "Times New Roman", serif;
 }
 
-/* Smooth scroll */
 html {
   scroll-behavior: smooth;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Utility: hairline rule flanking a heading
+   Usage: <div class="rule-heading">Section Title</div>
+   ───────────────────────────────────────────────────────────────────────────── */
+.rule-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: var(--font-display-var), "Times New Roman", serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+}
+
+.rule-heading::before,
+.rule-heading::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+/* Thin horizontal rule */
+.hr-rule {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 0;
 }

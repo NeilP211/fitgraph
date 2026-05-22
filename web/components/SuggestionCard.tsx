@@ -17,19 +17,22 @@ interface SuggestionCardProps {
 function ScoreBadge({ score }: { score: number }) {
   // Map [-1, 1] → [0, 100]
   const pct = Math.round(((score + 1) / 2) * 100);
-  const color =
+
+  // Warm editorial tiers — no green/amber
+  const colorClass =
     pct >= 75
-      ? "bg-emerald-100 text-emerald-700"
+      ? "bg-accent/10 text-accent-deep border border-accent/30"
       : pct >= 50
-      ? "bg-amber-100 text-amber-700"
-      : "bg-stone-100 text-stone-500";
+      ? "bg-gold/10 text-gold border border-gold/30"
+      : "bg-rule/30 text-ink-soft border border-rule";
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}
+      className={`inline-flex items-center rounded-sm px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] font-medium ${colorClass}`}
+      style={{ fontFamily: "var(--font-body-var), serif" }}
       title={`Raw score: ${score.toFixed(3)}`}
     >
-      {pct}% match
+      {pct}%
     </span>
   );
 }
@@ -58,11 +61,11 @@ export default function SuggestionCard({
 
   return (
     <article
-      className={`group relative flex flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition-all
+      className={`group relative flex flex-col overflow-hidden rounded-sm border bg-surface transition-all
         ${
           selected
-            ? "border-stone-900 ring-2 ring-stone-900"
-            : "border-stone-200 hover:border-stone-300 hover:shadow-md"
+            ? "border-ink ring-1 ring-ink"
+            : "border-rule hover:border-ink-soft hover:shadow-md"
         }`}
     >
       {/* Selection toggle */}
@@ -71,18 +74,18 @@ export default function SuggestionCard({
         onClick={onToggleSelect}
         aria-pressed={selected}
         aria-label={selected ? "Deselect item" : "Select item for outfit"}
-        className={`absolute top-2 left-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border-2 text-xs font-bold transition-all
+        className={`absolute top-2 left-2 z-10 flex h-6 w-6 items-center justify-center rounded-sm border text-xs font-bold transition-all
           ${
             selected
-              ? "border-stone-900 bg-stone-900 text-white"
-              : "border-white/70 bg-white/70 text-transparent group-hover:border-stone-400"
+              ? "border-ink bg-ink text-paper"
+              : "border-paper/70 bg-paper/70 text-transparent group-hover:border-ink-soft"
           }`}
       >
         ✓
       </button>
 
       {/* Image */}
-      <div className="relative aspect-square w-full bg-stone-100 overflow-hidden">
+      <div className="relative aspect-square w-full bg-rule/30 overflow-hidden">
         <Image
           src={imageUrl(item.item_id)}
           alt={item.title || `Item ${item.item_id}`}
@@ -94,26 +97,35 @@ export default function SuggestionCard({
       </div>
 
       {/* Content */}
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium text-stone-800 leading-snug line-clamp-2">
+          <p
+            className="text-sm text-ink leading-snug line-clamp-2 flex-1"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
             {item.title || "Untitled piece"}
           </p>
           <ScoreBadge score={item.score} />
         </div>
 
-        <p className="text-xs text-stone-400 capitalize">
+        <p
+          className="text-[10px] uppercase tracking-[0.12em] text-ink-soft"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
           {item.semantic_category}
         </p>
 
         {/* Feedback */}
-        <div className="mt-auto flex items-center gap-2 pt-2 border-t border-stone-100">
-          <span className="text-xs text-stone-400 flex-1">
+        <div className="mt-auto flex items-center gap-2 pt-2 border-t border-rule">
+          <span
+            className="text-[10px] text-ink-soft flex-1 uppercase tracking-[0.08em]"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
             {feedback === 1
-              ? "👍 Liked"
+              ? "Liked"
               : feedback === -1
-              ? "👎 Disliked"
-              : "Rate this suggestion"}
+              ? "Disliked"
+              : "Rate"}
           </span>
           {feedback === null && (
             <>
@@ -122,7 +134,7 @@ export default function SuggestionCard({
                 aria-label="Thumbs up — good match"
                 disabled={feedbackLoading}
                 onClick={() => submitFeedback(1)}
-                className="rounded-lg p-1.5 text-stone-400 hover:bg-emerald-50 hover:text-emerald-600 transition-colors disabled:opacity-50"
+                className="rounded-sm p-1.5 text-ink-soft hover:bg-accent/10 hover:text-accent transition-colors disabled:opacity-50"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -139,7 +151,7 @@ export default function SuggestionCard({
                 aria-label="Thumbs down — poor match"
                 disabled={feedbackLoading}
                 onClick={() => submitFeedback(-1)}
-                className="rounded-lg p-1.5 text-stone-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-50"
+                className="rounded-sm p-1.5 text-ink-soft hover:bg-accent-deep/10 hover:text-accent-deep transition-colors disabled:opacity-50"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"

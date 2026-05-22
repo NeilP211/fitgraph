@@ -49,27 +49,33 @@ export default function OutfitTray({
   // Success state
   if (savedOutfitId !== null) {
     return (
-      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-stone-200 bg-white/95 backdrop-blur-sm shadow-2xl">
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-base">
+            <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent/10 border border-accent/30 text-accent text-sm font-bold">
               ✓
             </span>
             <div>
-              <p className="text-sm font-semibold text-stone-900">
-                Outfit saved!
+              <p
+                className="text-sm font-medium text-ink"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
+                Outfit saved
               </p>
-              <p className="text-xs text-stone-500">
-                &ldquo;{name}&rdquo; saved with {pieceCount} piece
-                {pieceCount !== 1 ? "s" : ""}
+              <p
+                className="text-xs text-ink-soft"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
+                &ldquo;{name}&rdquo; — {pieceCount} piece{pieceCount !== 1 ? "s" : ""}
               </p>
             </div>
           </div>
           <Link
             href="/outfits"
-            className="rounded-xl bg-stone-900 px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700 transition-colors shadow-sm"
+            className="rounded-sm bg-accent px-5 py-2 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep transition-colors"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
           >
-            View saved outfits
+            View Outfits
           </Link>
         </div>
       </div>
@@ -77,18 +83,21 @@ export default function OutfitTray({
   }
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-stone-200 bg-white/95 backdrop-blur-sm shadow-2xl">
+    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl">
       <div className="mx-auto max-w-6xl px-6 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
           {/* Item strip */}
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className="text-xs font-medium text-stone-500 flex-shrink-0">
+            <span
+              className="text-[10px] uppercase tracking-[0.12em] text-ink-soft flex-shrink-0"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               {pieceCount} piece{pieceCount !== 1 ? "s" : ""}:
             </span>
             <div className="flex items-center gap-1.5 overflow-x-auto">
               {/* Seed */}
               <div
-                className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-lg bg-stone-100 ring-2 ring-stone-900"
+                className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink"
                 title={seedItem.title || "Seed item"}
               >
                 <Image
@@ -104,7 +113,7 @@ export default function OutfitTray({
               {selectedIds.map((id) => (
                 <div
                   key={id}
-                  className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-lg bg-stone-100 ring-2 ring-stone-400"
+                  className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink-soft"
                 >
                   <Image
                     src={imageUrl(id)}
@@ -118,7 +127,10 @@ export default function OutfitTray({
               ))}
               {/* Empty placeholder slots */}
               {selectedIds.length === 0 && (
-                <span className="text-xs text-stone-400 pl-1">
+                <span
+                  className="text-[10px] uppercase tracking-[0.1em] text-ink-soft pl-1"
+                  style={{ fontFamily: "var(--font-body-var), serif" }}
+                >
                   Select items above to build your outfit
                 </span>
               )}
@@ -137,10 +149,15 @@ export default function OutfitTray({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Name this outfit…"
                 aria-label="Outfit name"
-                className="rounded-xl border border-stone-300 px-3 py-2 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400 w-44"
+                className="rounded-sm border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none focus:border-ink-soft focus:ring-1 focus:ring-rule w-44"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
               />
               {error && (
-                <p role="alert" className="text-xs text-red-500">
+                <p
+                  role="alert"
+                  className="text-xs text-accent-deep"
+                  style={{ fontFamily: "var(--font-body-var), serif" }}
+                >
                   {error}
                 </p>
               )}
@@ -148,9 +165,10 @@ export default function OutfitTray({
             <button
               type="submit"
               disabled={!name.trim() || saving || selectedIds.length === 0}
-              className="rounded-xl bg-stone-900 px-5 py-2 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+              className="rounded-sm bg-accent px-5 py-2 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
             >
-              {saving ? "Saving…" : "Save outfit"}
+              {saving ? "Saving…" : "Save Outfit"}
             </button>
           </form>
         </div>

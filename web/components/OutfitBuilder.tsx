@@ -71,8 +71,8 @@ function SeedItem({ item }: { item: CatalogItem }) {
     : null;
 
   return (
-    <div className="flex items-center gap-4 rounded-2xl bg-white border border-stone-200 shadow-sm p-4">
-      <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-stone-100">
+    <div className="flex items-center gap-4 rounded-sm bg-surface border border-rule p-4">
+      <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-sm bg-rule/30">
         <Image
           src={imageUrl(item.item_id)}
           alt={label}
@@ -83,12 +83,25 @@ function SeedItem({ item }: { item: CatalogItem }) {
         />
       </div>
       <div className="min-w-0">
-        <span className="inline-block rounded-full bg-stone-900/5 px-2 py-0.5 text-xs font-medium uppercase tracking-widest text-stone-500 mb-1">
-          Seed item
+        <span
+          className="inline-block rounded-sm bg-ink/5 border border-rule px-2 py-0.5 text-[10px] uppercase tracking-[0.15em] text-ink-soft mb-2"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
+          Seed Item
         </span>
-        <p className="font-semibold text-stone-900 truncate">{label}</p>
+        <p
+          className="font-medium text-ink truncate"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
+          {label}
+        </p>
         {catLabel && (
-          <p className="text-xs text-stone-400 capitalize mt-0.5">{catLabel}</p>
+          <p
+            className="text-xs text-ink-soft uppercase tracking-[0.1em] mt-0.5"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
+            {catLabel}
+          </p>
         )}
       </div>
     </div>
@@ -102,17 +115,18 @@ function SeedItem({ item }: { item: CatalogItem }) {
 function SectionSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="h-5 w-32 animate-pulse rounded bg-stone-200" />
+      <div className="h-4 w-36 animate-pulse rounded-sm bg-rule/60" />
+      <div className="hr-rule" />
       <div className="flex gap-3 overflow-x-auto pb-2">
         {Array.from({ length: 5 }).map((_, i) => (
           <div
             key={i}
-            className="flex-shrink-0 w-44 rounded-2xl bg-white border border-stone-200 overflow-hidden"
+            className="flex-shrink-0 w-44 rounded-sm bg-surface border border-rule overflow-hidden"
           >
-            <div className="aspect-square w-full animate-pulse bg-stone-200" />
-            <div className="p-4 space-y-2">
-              <div className="h-3 w-3/4 animate-pulse rounded bg-stone-200" />
-              <div className="h-3 w-1/2 animate-pulse rounded bg-stone-200" />
+            <div className="aspect-square w-full animate-pulse bg-rule/50" />
+            <div className="p-3 space-y-2">
+              <div className="h-3 w-3/4 animate-pulse rounded-sm bg-rule/60" />
+              <div className="h-3 w-1/2 animate-pulse rounded-sm bg-rule/60" />
             </div>
           </div>
         ))}
@@ -156,18 +170,18 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (state.status === "loading") {
     return (
-      <main className="min-h-screen bg-stone-50">
+      <main className="min-h-screen bg-paper">
         <section
           aria-busy="true"
           aria-label="Loading outfit suggestions"
           className="mx-auto max-w-6xl px-6 pt-10 pb-16 space-y-8"
         >
           {/* Seed skeleton */}
-          <div className="flex items-center gap-4 rounded-2xl bg-white border border-stone-200 p-4">
-            <div className="h-20 w-20 flex-shrink-0 animate-pulse rounded-xl bg-stone-200" />
+          <div className="flex items-center gap-4 rounded-sm bg-surface border border-rule p-4">
+            <div className="h-20 w-20 flex-shrink-0 animate-pulse rounded-sm bg-rule/50" />
             <div className="space-y-2 flex-1">
-              <div className="h-3 w-20 animate-pulse rounded bg-stone-200" />
-              <div className="h-4 w-48 animate-pulse rounded bg-stone-200" />
+              <div className="h-3 w-20 animate-pulse rounded-sm bg-rule/60" />
+              <div className="h-4 w-48 animate-pulse rounded-sm bg-rule/60" />
             </div>
           </div>
           {Array.from({ length: 3 }).map((_, i) => (
@@ -180,11 +194,12 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (state.status === "error") {
     return (
-      <main className="min-h-screen bg-stone-50">
+      <main className="min-h-screen bg-paper">
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
           <div
             role="alert"
-            className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+            className="rounded-sm bg-surface border border-rule px-4 py-3 text-sm text-accent-deep"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
           >
             <strong>Error:</strong> {state.message}
           </div>
@@ -201,13 +216,20 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (categories.length === 0) {
     return (
-      <main className="min-h-screen bg-stone-50">
+      <main className="min-h-screen bg-paper">
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
           <SeedItem item={seed} />
-          <div className="mt-8 rounded-2xl bg-white border border-stone-200 p-16 text-center">
-            <p className="text-4xl mb-3">&#128268;</p>
-            <p className="font-medium text-stone-700">No suggestions found</p>
-            <p className="mt-1 text-sm text-stone-400">
+          <div className="mt-8 rounded-sm bg-surface border border-rule p-16 text-center">
+            <p
+              className="text-base uppercase tracking-[0.15em] text-ink-soft mb-2"
+              style={{ fontFamily: "var(--font-display-var), serif" }}
+            >
+              No Suggestions Found
+            </p>
+            <p
+              className="text-sm text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               This item has no compatible pieces in other categories.
             </p>
           </div>
@@ -217,21 +239,26 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
   }
 
   return (
-    <main className="min-h-screen bg-stone-50">
+    <main className="min-h-screen bg-paper">
       {/* Outfit tray — sticky on desktop, bottom bar on mobile */}
       <OutfitTray seedItem={seed} selectedIds={selectedIds} seedItemId={itemId} />
 
       <section className="mx-auto max-w-6xl px-6 pt-10 pb-32 space-y-10">
         {/* Page header */}
         <div>
-          <span className="inline-block rounded-full bg-stone-900/5 px-3 py-1 text-xs font-medium uppercase tracking-widest text-stone-500 mb-3">
-            Outfit builder
-          </span>
-          <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
-            Build your outfit
+          <div className="hr-rule mb-5" />
+          <h1
+            className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
+            style={{ fontFamily: "var(--font-display-var), serif" }}
+          >
+            Build Your Outfit
           </h1>
-          <p className="mt-1 text-sm text-stone-500">
-            Pick one item per category to build a complete look.
+          <div className="hr-rule mt-4" />
+          <p
+            className="mt-3 text-base text-ink-soft"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
+            Select one piece per category to compose a complete look.
           </p>
         </div>
 
@@ -247,16 +274,27 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
           return (
             <div key={cat} className="space-y-3">
+              {/* Section header with hairline rule */}
               <div className="flex items-center gap-3">
-                <h2 className="text-base font-semibold text-stone-900">
+                <h2
+                  className="text-sm font-semibold uppercase tracking-[0.14em] text-ink flex-shrink-0"
+                  style={{ fontFamily: "var(--font-display-var), serif" }}
+                >
                   {catLabel}
                 </h2>
-                <span className="text-xs text-stone-400">
+                <div className="flex-1 h-px bg-rule" />
+                <span
+                  className="text-[10px] uppercase tracking-[0.1em] text-ink-soft flex-shrink-0"
+                  style={{ fontFamily: "var(--font-body-var), serif" }}
+                >
                   {items.length} option{items.length !== 1 ? "s" : ""}
                 </span>
                 {selected[cat] && (
-                  <span className="ml-auto rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-                    1 selected
+                  <span
+                    className="ml-1 rounded-sm bg-accent/10 border border-accent/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-accent-deep flex-shrink-0"
+                    style={{ fontFamily: "var(--font-body-var), serif" }}
+                  >
+                    Selected
                   </span>
                 )}
               </div>

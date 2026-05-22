@@ -51,7 +51,7 @@ export default function CategoryNav({ selected, onSelect }: CategoryNavProps) {
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="h-9 w-24 animate-pulse rounded-full bg-stone-200"
+            className="h-8 w-28 animate-pulse rounded-sm bg-rule/60"
           />
         ))}
       </div>
@@ -62,7 +62,8 @@ export default function CategoryNav({ selected, onSelect }: CategoryNavProps) {
     return (
       <div
         role="alert"
-        className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+        className="rounded-sm bg-surface border border-rule px-4 py-3 text-sm text-accent-deep"
+        style={{ fontFamily: "var(--font-body-var), serif" }}
       >
         <strong>Error:</strong> {error}
       </div>
@@ -82,16 +83,17 @@ export default function CategoryNav({ selected, onSelect }: CategoryNavProps) {
             type="button"
             aria-pressed={active}
             onClick={() => onSelect(category)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-all ${
+            className={`inline-flex items-center gap-2 rounded-sm px-4 py-1.5 text-xs uppercase tracking-[0.14em] transition-all border ${
               active
-                ? "bg-stone-900 text-white shadow-sm"
-                : "bg-white border border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900"
+                ? "bg-ink text-paper border-ink"
+                : "bg-surface text-ink-soft border-rule hover:border-ink-soft hover:text-ink"
             }`}
+            style={{ fontFamily: "var(--font-body-var), serif" }}
           >
             {label}
             <span
-              className={`text-xs tabular-nums ${
-                active ? "text-stone-300" : "text-stone-400"
+              className={`tabular-nums text-[10px] ${
+                active ? "text-rule" : "text-rule"
               }`}
             >
               {count.toLocaleString()}

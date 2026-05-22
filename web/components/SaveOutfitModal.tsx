@@ -45,20 +45,26 @@ export default function SaveOutfitModal({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-ink/50 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+      <div className="relative z-10 w-full max-w-sm rounded-sm bg-surface border border-rule p-6 shadow-2xl">
+        {/* Header with hairline rule */}
         <h2
           id="save-outfit-title"
-          className="text-lg font-semibold text-stone-900 mb-1"
+          className="text-base font-semibold uppercase tracking-[0.14em] text-ink mb-1"
+          style={{ fontFamily: "var(--font-display-var), serif" }}
         >
           Save Outfit
         </h2>
-        <p className="text-sm text-stone-500 mb-5">
+        <div className="hr-rule mb-4" />
+        <p
+          className="text-sm text-ink-soft mb-5"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
           {itemIds.length} piece{itemIds.length !== 1 ? "s" : ""} selected
         </p>
 
@@ -66,9 +72,10 @@ export default function SaveOutfitModal({
           <div className="flex flex-col gap-1.5">
             <label
               htmlFor="outfit-name"
-              className="text-xs font-medium text-stone-500 uppercase tracking-wide"
+              className="text-[10px] uppercase tracking-[0.15em] text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
             >
-              Outfit name
+              Outfit Name
             </label>
             <input
               id="outfit-name"
@@ -77,12 +84,17 @@ export default function SaveOutfitModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Summer Casual"
-              className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-400"
+              className="rounded-sm border border-rule bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-ink-soft focus:ring-1 focus:ring-rule"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
             />
           </div>
 
           {error && (
-            <p role="alert" className="text-xs text-red-500">
+            <p
+              role="alert"
+              className="text-xs text-accent-deep"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               {error}
             </p>
           )}
@@ -91,14 +103,16 @@ export default function SaveOutfitModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50 transition-colors"
+              className="flex-1 rounded-sm border border-rule px-4 py-2.5 text-xs uppercase tracking-[0.12em] text-ink-soft hover:border-ink-soft hover:text-ink transition-colors"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!name.trim() || saving}
-              className="flex-1 rounded-xl bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 rounded-sm bg-accent px-4 py-2.5 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
             >
               {saving ? "Saving…" : "Save"}
             </button>

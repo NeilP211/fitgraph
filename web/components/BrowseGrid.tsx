@@ -58,10 +58,10 @@ function reducer(state: State, action: Action): State {
 
 function ItemCardSkeleton() {
   return (
-    <div className="rounded-2xl bg-white border border-stone-200 overflow-hidden">
-      <div className="aspect-square w-full animate-pulse bg-stone-200" />
+    <div className="rounded-sm bg-surface border border-rule overflow-hidden">
+      <div className="aspect-square w-full animate-pulse bg-rule/50" />
       <div className="p-3">
-        <div className="h-3 w-3/4 animate-pulse rounded bg-stone-200" />
+        <div className="h-3 w-3/4 animate-pulse rounded-sm bg-rule/70" />
       </div>
     </div>
   );
@@ -144,7 +144,8 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
     return (
       <div
         role="alert"
-        className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+        className="rounded-sm bg-surface border border-rule px-4 py-3 text-sm text-accent-deep"
+        style={{ fontFamily: "var(--font-body-var), serif" }}
       >
         <strong>Error:</strong> {state.message}
       </div>
@@ -153,10 +154,17 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
 
   if (state.items.length === 0) {
     return (
-      <div className="rounded-2xl bg-white border border-stone-200 p-16 text-center">
-        <p className="text-4xl mb-3">&#128268;</p>
-        <p className="font-medium text-stone-700">No items found</p>
-        <p className="mt-1 text-sm text-stone-400">
+      <div className="rounded-sm bg-surface border border-rule p-16 text-center">
+        <p
+          className="text-base uppercase tracking-[0.15em] text-ink-soft mb-2"
+          style={{ fontFamily: "var(--font-display-var), serif" }}
+        >
+          No Items Found
+        </p>
+        <p
+          className="text-sm text-ink-soft"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
           Select a different category to browse.
         </p>
       </div>
@@ -170,10 +178,10 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
           <Link
             key={item.item_id}
             href={`/build/${encodeURIComponent(item.item_id)}`}
-            className="group relative flex flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm hover:border-stone-300 hover:shadow-md transition-all"
+            className="group relative flex flex-col overflow-hidden rounded-sm border border-rule bg-surface hover:border-ink-soft hover:shadow-md transition-all"
           >
             {/* Image */}
-            <div className="relative aspect-square w-full bg-stone-100 overflow-hidden">
+            <div className="relative aspect-square w-full bg-rule/30 overflow-hidden">
               <Image
                 src={imageUrl(item.item_id)}
                 alt={item.title || categoryLabel}
@@ -183,8 +191,11 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
                 unoptimized
               />
               {/* Hover overlay */}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/10 transition-colors">
-                <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-stone-900 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+              <div className="absolute inset-0 flex items-center justify-center bg-ink/0 group-hover:bg-ink/10 transition-colors">
+                <span
+                  className="rounded-sm bg-paper/90 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-ink opacity-0 group-hover:opacity-100 transition-opacity"
+                  style={{ fontFamily: "var(--font-body-var), serif" }}
+                >
                   Build outfit
                 </span>
               </div>
@@ -192,7 +203,10 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
 
             {/* Title */}
             <div className="px-3 py-2.5">
-              <p className="text-xs font-medium text-stone-700 leading-snug line-clamp-2">
+              <p
+                className="text-xs text-ink leading-snug line-clamp-2"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
                 {item.title || categoryLabel}
               </p>
             </div>
@@ -202,17 +216,18 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
 
       {/* Load more */}
       {state.hasMore && (
-        <div className="mt-8 flex justify-center">
+        <div className="mt-10 flex justify-center">
           <button
             type="button"
             onClick={handleLoadMore}
             disabled={state.loadingMore}
-            className="rounded-xl border border-stone-300 bg-white px-6 py-2.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 hover:border-stone-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="rounded-sm border border-ink px-8 py-2.5 text-xs uppercase tracking-[0.14em] text-ink hover:bg-ink hover:text-paper disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
           >
             {state.loadingMore ? (
               <span className="flex items-center gap-2">
                 <svg
-                  className="h-4 w-4 animate-spin text-stone-400"
+                  className="h-4 w-4 animate-spin text-ink-soft"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -235,7 +250,7 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
                 Loading…
               </span>
             ) : (
-              "Load more"
+              "Load More"
             )}
           </button>
         </div>

@@ -13,9 +13,9 @@ function OutfitCard({ outfit }: { outfit: OutfitHistoryEntry }) {
   const extra = outfit.item_ids.length - visibleIds.length;
 
   return (
-    <article className="rounded-2xl bg-white border border-stone-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+    <article className="rounded-sm bg-surface border border-rule overflow-hidden hover:border-ink-soft hover:shadow-md transition-all">
       {/* Item image strip */}
-      <div className="grid grid-cols-4 gap-0.5 bg-stone-100">
+      <div className="grid grid-cols-4 gap-0.5 bg-rule/40">
         {visibleIds.map((id, idx) => (
           <div key={id} className="relative aspect-square overflow-hidden">
             <Image
@@ -27,7 +27,10 @@ function OutfitCard({ outfit }: { outfit: OutfitHistoryEntry }) {
               unoptimized
             />
             {idx === visibleIds.length - 1 && extra > 0 && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white text-sm font-semibold">
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-ink/40 text-paper text-xs font-medium"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
                 +{extra}
               </div>
             )}
@@ -36,22 +39,31 @@ function OutfitCard({ outfit }: { outfit: OutfitHistoryEntry }) {
         {/* Placeholder cells if fewer than 4 items */}
         {Array.from({ length: Math.max(0, 4 - visibleIds.length) }).map(
           (_, i) => (
-            <div key={`ph-${i}`} className="aspect-square bg-stone-200" />
+            <div key={`ph-${i}`} className="aspect-square bg-rule/40" />
           )
         )}
       </div>
 
       {/* Metadata */}
       <div className="p-4">
-        <p className="font-medium text-stone-900 truncate">
+        <p
+          className="font-medium text-ink truncate"
+          style={{ fontFamily: "var(--font-body-var), serif" }}
+        >
           {outfit.outfit_name || `Outfit #${outfit.outfit_id}`}
         </p>
-        <div className="mt-1 flex items-center justify-between">
-          <p className="text-xs text-stone-400">
+        <div className="mt-2 flex items-center justify-between">
+          <p
+            className="text-[10px] uppercase tracking-[0.12em] text-ink-soft"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
             {outfit.item_ids.length} piece{outfit.item_ids.length !== 1 ? "s" : ""}
           </p>
           {outfit.created_at && (
-            <p className="text-xs text-stone-400">
+            <p
+              className="text-[10px] uppercase tracking-[0.08em] text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               {new Date(outfit.created_at).toLocaleDateString(undefined, {
                 month: "short",
                 day: "numeric",
@@ -91,24 +103,34 @@ export default function OutfitsPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-stone-50">
+    <main className="min-h-screen bg-paper">
       <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
+        {/* Page header */}
+        <div className="hr-rule mb-6" />
         <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-stone-900 tracking-tight">
+            <h1
+              className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
+              style={{ fontFamily: "var(--font-display-var), serif" }}
+            >
               Saved Outfits
             </h1>
-            <p className="mt-1 text-sm text-stone-500">
+            <p
+              className="mt-2 text-base text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               Your curated looks, all in one place.
             </p>
           </div>
           <Link
             href="/"
-            className="rounded-xl bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-stone-700 transition-colors"
+            className="rounded-sm bg-accent px-5 py-2.5 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep transition-colors"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
           >
-            + New outfit
+            New Outfit
           </Link>
         </div>
+        <div className="hr-rule mb-8" />
 
         {/* Loading skeleton */}
         {loading && (
@@ -120,19 +142,19 @@ export default function OutfitsPage() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="rounded-2xl bg-white border border-stone-200 overflow-hidden"
+                className="rounded-sm bg-surface border border-rule overflow-hidden"
               >
-                <div className="grid grid-cols-4 gap-0.5 bg-stone-100">
+                <div className="grid grid-cols-4 gap-0.5 bg-rule/40">
                   {Array.from({ length: 4 }).map((_, j) => (
                     <div
                       key={j}
-                      className="aspect-square animate-pulse bg-stone-200"
+                      className="aspect-square animate-pulse bg-rule/60"
                     />
                   ))}
                 </div>
                 <div className="p-4 space-y-2">
-                  <div className="h-4 w-2/3 animate-pulse rounded bg-stone-200" />
-                  <div className="h-3 w-1/3 animate-pulse rounded bg-stone-200" />
+                  <div className="h-4 w-2/3 animate-pulse rounded-sm bg-rule/60" />
+                  <div className="h-3 w-1/3 animate-pulse rounded-sm bg-rule/60" />
                 </div>
               </div>
             ))}
@@ -141,20 +163,31 @@ export default function OutfitsPage() {
 
         {/* Error state */}
         {!loading && error && (
-          <div role="alert" className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div
+            role="alert"
+            className="rounded-sm bg-surface border border-rule px-4 py-3 text-sm text-accent-deep"
+            style={{ fontFamily: "var(--font-body-var), serif" }}
+          >
             <strong>Error:</strong> {error}
           </div>
         )}
 
         {/* Empty state */}
         {!loading && !error && outfits.length === 0 && (
-          <div className="rounded-2xl bg-white border border-stone-200 p-16 text-center">
-            <p className="text-4xl mb-4">&#128248;</p>
-            <p className="font-medium text-stone-700 text-lg">No outfits yet</p>
-            <p className="mt-2 text-sm text-stone-400">
+          <div className="rounded-sm bg-surface border border-rule p-16 text-center">
+            <p
+              className="text-base uppercase tracking-[0.15em] text-ink-soft mb-3"
+              style={{ fontFamily: "var(--font-display-var), serif" }}
+            >
+              No Outfits Yet
+            </p>
+            <p
+              className="text-sm text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
               Head to{" "}
-              <Link href="/" className="text-stone-700 underline underline-offset-2">
-                Discover
+              <Link href="/" className="text-accent underline underline-offset-2">
+                the catalog
               </Link>{" "}
               to build your first look.
             </p>

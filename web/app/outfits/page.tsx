@@ -8,12 +8,22 @@ import Link from "next/link";
 
 const DEMO_USER_ID = 1;
 
-function OutfitCard({ outfit }: { outfit: OutfitHistoryEntry }) {
+function OutfitCard({
+  outfit,
+  onOpen,
+}: {
+  outfit: OutfitHistoryEntry;
+  onOpen: () => void;
+}) {
   const visibleIds = outfit.item_ids.slice(0, 4);
   const extra = outfit.item_ids.length - visibleIds.length;
 
   return (
-    <article className="rounded-sm bg-surface border border-rule overflow-hidden hover:border-ink-soft hover:shadow-md transition-all">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block w-full text-left rounded-sm bg-surface border border-rule overflow-hidden hover:border-ink-soft hover:shadow-md transition-all cursor-pointer"
+    >
       {/* Item image strip */}
       <div className="grid grid-cols-4 gap-0.5 bg-rule/40">
         {visibleIds.map((id, idx) => (
@@ -73,7 +83,89 @@ function OutfitCard({ outfit }: { outfit: OutfitHistoryEntry }) {
           )}
         </div>
       </div>
-    </article>
+    </button>
+  );
+}
+
+function OutfitDetailModal({
+  outfit,
+  onClose,
+}: {
+  outfit: OutfitHistoryEntry;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={outfit.outfit_name || `Outfit ${outfit.outfit_id}`}
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-sm bg-surface border border-rule p-6"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2
+              className="text-2xl uppercase tracking-[0.1em] text-ink"
+              style={{ fontFamily: "var(--font-display-var), serif" }}
+            >
+              {outfit.outfit_name || `Outfit #${outfit.outfit_id}`}
+            </h2>
+            <p
+              className="mt-1 text-[10px] uppercase tracking-[0.14em] text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
+              {outfit.item_ids.length} piece
+              {outfit.item_ids.length !== 1 ? "s" : ""} · tap a piece to restyle
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="px-2 text-2xl leading-none text-ink-soft hover:text-ink"
+          >
+            ×
+          </button>
+        </div>
+        <div className="hr-rule my-4" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {outfit.item_ids.map((id) => (
+            <Link
+              key={id}
+              href={`/build/${encodeURIComponent(id)}`}
+              className="group relative block aspect-square overflow-hidden rounded-sm border border-rule bg-paper"
+            >
+              <Image
+                src={imageUrl(id)}
+                alt={`Item ${id}`}
+                fill
+                sizes="20vw"
+                className="object-cover"
+                unoptimized
+              />
+              <span
+                className="absolute inset-x-0 bottom-0 bg-ink/60 py-1 text-center text-[10px] uppercase tracking-[0.12em] text-paper opacity-0 transition-opacity group-hover:opacity-100"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
+                Restyle
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -81,6 +173,7 @@ export default function OutfitsPage() {
   const [outfits, setOutfits] = useState<OutfitHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<OutfitHistoryEntry | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -198,11 +291,21 @@ export default function OutfitsPage() {
         {!loading && !error && outfits.length > 0 && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {outfits.map((outfit) => (
-              <OutfitCard key={outfit.outfit_id} outfit={outfit} />
+              <OutfitCard
+                key={outfit.outfit_id}
+                outfit={outfit}
+                onOpen={() => setSelected(outfit)}
+              />
             ))}
           </div>
         )}
       </section>
+      {selected && (
+        <OutfitDetailModal
+          outfit={selected}
+          onClose={() => setSelected(null)}
+        />
+      )}
     </main>
   );
 }

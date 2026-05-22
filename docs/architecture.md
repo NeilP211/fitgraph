@@ -58,23 +58,27 @@ one partition, so no garment co-occurrence signal leaks between splits.
 ### Serving path (online inference)
 
 ```
-User uploads garment image (Next.js frontend)
+User browses the categorized catalog (Next.js frontend)
         │
         ▼
-  POST /suggest  (FastAPI)
+  GET /catalog/categories  (FastAPI)  ← list all semantic categories with item counts
+  GET /catalog/items       (FastAPI)  ← paginated items by category
         │
         ▼
-  api/serving.py          CLIP-embed the upload
-  models/hgat.py          model.embed_features(x)  ← inductive, no graph needed
+  User picks a seed garment → navigates to the outfit builder
         │
         ▼
-  retrieval/pgvector_store.py   ANN cosine search over catalog embeddings
+  GET /items/{id}/outfit-suggestions  (FastAPI)
         │
         ▼
-  models/type_aware.py    TypeAwareScorer re-ranks candidates in per-type-pair subspaces
+  api/serving.py          Load seed item embedding from pgvector
+  retrieval/pgvector_store.py   Category-filtered ANN cosine search per category
         │
         ▼
-  Ranked compatibility suggestions returned to the frontend
+  models/type_aware.py    TypeAwareScorer re-ranks per-category candidates
+        │
+        ▼
+  Grouped per-category suggestions returned to the outfit builder
 ```
 
 ### Feedback path (active learning)
@@ -320,9 +324,11 @@ The inference API (`src/fitgraph/api/`) is a FastAPI application:
 
 | Endpoint | Description |
 |---|---|
+| `GET /catalog/categories` | List all semantic categories with item counts |
+| `GET /catalog/items` | Paginated catalog items filtered by category |
+| `GET /items/{id}/outfit-suggestions` | Grouped per-category outfit suggestions for a seed item |
 | `POST /compatibility` | Score compatibility between two items |
-| `POST /suggest` | Upload a garment, return ranked compatible suggestions |
-| `POST /outfits` | Save an outfit (authenticated) |
+| `POST /outfits` | Save an outfit |
 | `GET /outfits` | List a user's saved outfits |
 | `POST /feedback` | Submit a rating (publishes to Redis Stream) |
 | `GET /catalog/search` | Full-text search over item tags |
@@ -338,11 +344,19 @@ in-memory ring buffer (last 500 requests) tracks P99 latency, reported in the
 The `web/` directory contains a Next.js 16 + TypeScript + Tailwind CSS
 application with:
 
-- **Upload page** — drag-and-drop garment image, calls `POST /suggest`.
-- **Suggestions grid** — item cards with compatibility scores and thumbs
-  up/down controls that call `POST /feedback`.
-- **Save outfit** — collects selected items and calls `POST /outfits`.
-- **Saved outfits view** — calls `GET /outfits` to display outfit history.
+- **Browse home** — category navigation pills with item counts; responsive
+  image-first item grid loaded via `GET /catalog/items`; "Load more"
+  pagination. Each item card links to the outfit builder.
+- **Outfit builder** (`/build/[itemId]`) — seed item pinned at the top;
+  per-category suggestion sections fetched from
+  `GET /items/{id}/outfit-suggestions`; each card shows the item image,
+  a match-score badge, and thumbs up/down controls that call `POST /feedback`.
+  One item per category can be selected; selected items appear in the sticky
+  outfit tray.
+- **Outfit tray** — sticky bottom bar showing the seed + selected items as
+  thumbnails, a name input, and "Save outfit" which calls `POST /outfits`.
+- **Saved outfits view** — calls `GET /outfits` to display a grid of outfit
+  cards, each showing up to four item images and the outfit metadata.
 
 ### Docker Compose (local infrastructure)
 

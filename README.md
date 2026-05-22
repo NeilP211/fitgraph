@@ -1,8 +1,8 @@
 # FitGraph
 
-**Outfit compatibility via graph neural networks** — most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). FitGraph learns *compatibility*: what actually goes together in an outfit, by training on how garments are co-worn across 35,140 real Polyvore outfits. It then serves those learned embeddings through a full-stack product — image upload, ranked suggestions, user feedback, and a live retrain loop.
+**Outfit compatibility via graph neural networks** — most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). FitGraph learns *compatibility*: what actually goes together in an outfit, by training on how garments are co-worn across 35,140 real Polyvore outfits. It then serves those learned embeddings through a full-stack product — browse a categorized catalog, pick a seed garment, get compatible items grouped by category, assemble & save an outfit — backed by a live retrain loop.
 
-![FitGraph — upload a garment, get compatible suggestions ranked by the type-aware HGAT](docs/assets/screenshot.png)
+![FitGraph — browse a categorized catalog, pick a seed garment, get compatible suggestions grouped by category](docs/assets/screenshot.png)
 
 ---
 
@@ -85,7 +85,9 @@ IVFFlat cosine index                      no graph needed at serve time
                                │
                                ▼
                     FastAPI (api/)
-                    POST /suggest       CLIP-embed upload → embed_features
+                    GET  /catalog/categories  List all semantic categories with counts
+                    GET  /catalog/items       Paginated items by category
+                    GET  /items/{id}/outfit-suggestions  Grouped per-category suggestions
                     POST /compatibility  TypeAwareScorer in 67 type-pair subspaces
                     POST /feedback      Publish rating → Redis Stream
                     POST /outfits       Save outfit history
@@ -106,7 +108,7 @@ IVFFlat cosine index                      no graph needed at serve time
                                │
                                ▼
                     Next.js frontend (web/)
-                    Upload · Suggestions grid · Save outfit · Rate
+                    Browse catalog · Category nav · Outfit builder · Save outfit · Rate
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for deep coverage of model internals, training details, the leakage fix, database schema, Redis Streams design, and the deferred AWS architecture.
@@ -174,10 +176,11 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
   --embeddings data/models/<v>/catalog_embeddings.npz \
   --model-version <v>
 
-# 8. Start the FastAPI backend (listens on :8000)
-.venv/bin/uvicorn fitgraph.api.main:create_app --factory
+# 8. Start the FastAPI backend (pick a free port, e.g. 8011)
+.venv/bin/uvicorn fitgraph.api.main:create_app --factory --port 8011
 
-# 9. Start the Next.js frontend (listens on :3000)
+# 9. Start the Next.js frontend pointed at the API
+echo "NEXT_PUBLIC_API_URL=http://localhost:8011" > web/.env.local
 cd web && npm install && npm run dev
 ```
 
@@ -260,4 +263,4 @@ See the full intended architecture in [`docs/architecture.md`](docs/architecture
 
 ## Resume bullet
 
-> Built FitGraph, a type-aware Heterogeneous Graph Attention Network trained with InfoNCE contrastive loss and CLIP-mined hard negatives over 35k Polyvore outfits; achieved **AUC 0.848** and **FITB 62.3%** on the full leakage-free inductive test set (caught and fixed a transductive evaluation bug that had inflated AUC to 0.99); served via a FastAPI + pgvector + Redis Streams stack with a full Next.js frontend and active-learning retrain loop.
+> Built FitGraph, a type-aware Heterogeneous Graph Attention Network trained with InfoNCE contrastive loss and CLIP-mined hard negatives over 35k Polyvore outfits; achieved **AUC 0.848** and **FITB 62.3%** on the full leakage-free inductive test set (caught and fixed a transductive evaluation bug that had inflated AUC to 0.99); served via a FastAPI + pgvector + Redis Streams stack with a full Next.js frontend that lets users browse a categorized catalog, pick a seed garment, get compatible items grouped by category, assemble & save an outfit, and provide feedback through an active-learning retrain loop.

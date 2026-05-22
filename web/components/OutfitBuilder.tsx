@@ -170,7 +170,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (state.status === "loading") {
     return (
-      <main className="min-h-screen bg-paper">
+      <main className="min-h-screen bg-transparent">
         <section
           aria-busy="true"
           aria-label="Loading outfit suggestions"
@@ -194,7 +194,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (state.status === "error") {
     return (
-      <main className="min-h-screen bg-paper">
+      <main className="min-h-screen bg-transparent">
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
           <div
             role="alert"
@@ -216,7 +216,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
   if (categories.length === 0) {
     return (
-      <main className="min-h-screen bg-paper">
+      <main className="min-h-screen bg-transparent">
         <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
           <SeedItem item={seed} />
           <div className="mt-8 rounded-sm bg-surface border border-rule p-16 text-center">
@@ -239,7 +239,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
   }
 
   return (
-    <main className="min-h-screen bg-paper">
+    <main className="min-h-screen bg-transparent">
       {/* Outfit tray — sticky on desktop, bottom bar on mobile */}
       <OutfitTray seedItem={seed} selectedIds={selectedIds} seedItemId={itemId} />
 

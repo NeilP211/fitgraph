@@ -196,7 +196,7 @@ export default function OutfitsPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-paper">
+    <main className="min-h-screen bg-transparent">
       <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
         {/* Page header */}
         <div className="hr-rule mb-6" />

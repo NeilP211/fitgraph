@@ -8,7 +8,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   return (
-    <main className="min-h-screen bg-paper">
+    <main className="min-h-screen bg-transparent">
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-6 pt-12 pb-8">
         {/* Hairline rule above */}

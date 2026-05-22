@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cinzel, EB_Garamond, Italianno } from "next/font/google";
 import Nav from "@/components/Nav";
+import WrapBackground from "@/components/WrapBackground";
 import "./globals.css";
 
 /* ── Display font: Cinzel — engraved Roman capitals ── */
@@ -44,7 +45,8 @@ export default function RootLayout({
       lang="en"
       className={`${cinzel.variable} ${ebGaramond.variable} ${italianno.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-paper text-ink">
+      <body className="min-h-full flex flex-col bg-transparent text-ink">
+        <WrapBackground />
         <Nav />
         <div className="flex-1">{children}</div>
       </body>

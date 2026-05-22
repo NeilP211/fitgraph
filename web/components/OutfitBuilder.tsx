@@ -8,6 +8,7 @@ import type { OutfitSuggestionsResponse, SuggestionItem } from "@/lib/api";
 import SuggestionCard from "@/components/SuggestionCard";
 import StageFigure, { categoryToSlot, CENTER_SLOTS } from "@/components/StageFigure";
 import type { StageFigureItem } from "@/components/StageFigure";
+import Audience from "@/components/Audience";
 import { Reveal } from "@/components/motion/Reveal";
 import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMotion";
 
@@ -636,6 +637,14 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
                   figureHeight={480}
                   items={stageFigureItems}
                 />
+              </div>
+
+              {/* Audience crowd — foot of the runway */}
+              <div
+                className="w-full"
+                style={{ background: "linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--rule) 12%, transparent) 100%)" }}
+              >
+                <Audience />
               </div>
 
               {/* Piece count status bar */}

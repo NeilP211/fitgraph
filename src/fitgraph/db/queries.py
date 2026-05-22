@@ -65,6 +65,32 @@ def search_items_by_tag(session: Session, query: str, limit: int = 20) -> list[I
     )
 
 
+def list_categories(session: Session) -> list[dict]:
+    """Return [{"category", "count"}] for non-null categories, count desc."""
+    rows = (
+        session.query(Item.semantic_category, func.count(Item.id))
+        .filter(Item.semantic_category.isnot(None), Item.semantic_category != "")
+        .group_by(Item.semantic_category)
+        .order_by(func.count(Item.id).desc())
+        .all()
+    )
+    return [{"category": c, "count": int(n)} for c, n in rows]
+
+
+def list_items_by_category(
+    session: Session, category: str, limit: int = 24, offset: int = 0
+) -> list[Item]:
+    """Items in a category, stable-ordered by id, paginated."""
+    return (
+        session.query(Item)
+        .filter(Item.semantic_category == category)
+        .order_by(Item.id)
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+
 def rating_volume_since(session: Session, model_version: str) -> int:
     """Count ratings collected since *model_version* was created.
 

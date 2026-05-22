@@ -15,6 +15,8 @@ from sqlalchemy.exc import OperationalError
 
 from fitgraph.db.models import Item, ModelVersion, Outfit, OutfitItem, Rating, User
 from fitgraph.db.queries import (
+    list_categories,
+    list_items_by_category,
     rating_volume_since,
     search_items_by_tag,
     user_outfit_history,
@@ -232,3 +234,65 @@ class TestRatingVolumeSince:
 
     def test_returns_zero_for_unknown_version(self, session):
         assert rating_volume_since(session, "no_such_version") == 0
+
+
+# ---------------------------------------------------------------------------
+# list_categories
+# ---------------------------------------------------------------------------
+
+
+class TestListCategories:
+    def test_returns_categories_with_counts(self, session):
+        _seed_item(session, "cat_a1", title="x", cat="zqxcat_tops")
+        _seed_item(session, "cat_a2", title="y", cat="zqxcat_tops")
+        _seed_item(session, "cat_b1", title="z", cat="zqxcat_shoes")
+        session.flush()
+        rows = list_categories(session)
+        by_cat = {r["category"]: r["count"] for r in rows}
+        assert by_cat["zqxcat_tops"] == 2
+        assert by_cat["zqxcat_shoes"] == 1
+
+    def test_ordered_by_count_desc(self, session):
+        _seed_item(session, "cat_ord_a1", title="a", cat="zqxcat_ord_big")
+        _seed_item(session, "cat_ord_a2", title="b", cat="zqxcat_ord_big")
+        _seed_item(session, "cat_ord_a3", title="c", cat="zqxcat_ord_big")
+        _seed_item(session, "cat_ord_b1", title="d", cat="zqxcat_ord_small")
+        session.flush()
+        rows = list_categories(session)
+        # Find positions of our test categories
+        cats = [r["category"] for r in rows]
+        idx_big = cats.index("zqxcat_ord_big")
+        idx_small = cats.index("zqxcat_ord_small")
+        assert idx_big < idx_small  # big count appears before small
+
+
+# ---------------------------------------------------------------------------
+# list_items_by_category
+# ---------------------------------------------------------------------------
+
+
+class TestListItemsByCategory:
+    def test_paginates_within_category(self, session):
+        for i in range(5):
+            _seed_item(session, f"lic_{i}", title=f"item{i}", cat="zqxcat_bottoms")
+        _seed_item(session, "lic_other", title="other", cat="zqxcat_hats")
+        session.flush()
+        page = list_items_by_category(session, "zqxcat_bottoms", limit=2, offset=0)
+        assert len(page) == 2
+        assert all(it.semantic_category == "zqxcat_bottoms" for it in page)
+        page2 = list_items_by_category(session, "zqxcat_bottoms", limit=2, offset=2)
+        assert len(page2) == 2
+        assert {it.id for it in page} & {it.id for it in page2} == set()
+
+    def test_filters_by_category(self, session):
+        _seed_item(session, "licat_a1", title="top", cat="zqxcat_licat_tops")
+        _seed_item(session, "licat_b1", title="shoe", cat="zqxcat_licat_shoes")
+        session.flush()
+        result = list_items_by_category(session, "zqxcat_licat_tops")
+        ids = [it.id for it in result]
+        assert "licat_a1" in ids
+        assert "licat_b1" not in ids
+
+    def test_returns_empty_for_unknown_category(self, session):
+        result = list_items_by_category(session, "zqxcat_nonexistent_xyz")
+        assert result == []

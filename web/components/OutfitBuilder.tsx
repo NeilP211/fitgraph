@@ -11,6 +11,8 @@ import type { StageFigureItem } from "@/components/StageFigure";
 import Audience from "@/components/Audience";
 import { Reveal } from "@/components/motion/Reveal";
 import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMotion";
+import { useShowAudio } from "@/components/audio/useShowAudio";
+import MusicToggle from "@/components/audio/MusicToggle";
 
 const DEMO_USER_ID = 1;
 
@@ -424,6 +426,7 @@ interface OutfitBuilderProps {
 export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
   const [state, dispatch] = useReducer(reducer, { status: "loading" });
   const [savedName, setSavedName] = useState("");
+  const { soundOn, toggleMusic, playCheer } = useShowAudio();
 
   useEffect(() => {
     let cancelled = false;
@@ -602,7 +605,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
             >
               {/* Stage label */}
               <div
-                className="w-full text-center py-2 border-b border-rule"
+                className="w-full text-center py-2 border-b border-rule relative"
                 style={{ background: "var(--surface)" }}
               >
                 <span
@@ -611,6 +614,12 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
                 >
                   ✦ Center Stage ✦
                 </span>
+                {/* Music toggle — top-right of the stage header */}
+                <MusicToggle
+                  soundOn={soundOn}
+                  onToggle={toggleMusic}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                />
               </div>
 
               {/* Runway perspective lines */}
@@ -644,7 +653,7 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
                 className="w-full"
                 style={{ background: "linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--rule) 12%, transparent) 100%)" }}
               >
-                <Audience />
+                <Audience onCheer={playCheer} />
               </div>
 
               {/* Piece count status bar */}

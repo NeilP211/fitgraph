@@ -82,3 +82,45 @@ def query(
     )
     rows = session.execute(stmt, {"vec": str(vector), "k": k}).fetchall()
     return [(row.item_id, float(row.cosine_dist)) for row in rows]
+
+
+def query_by_category(
+    session: Session,
+    vector: list[float],
+    category: str,
+    k: int = 40,
+) -> list[tuple[str, float]]:
+    """Category-filtered cosine-distance ANN over item_embeddings.
+
+    Parameters
+    ----------
+    session:
+        An active SQLAlchemy :class:`~sqlalchemy.orm.Session`.
+    vector:
+        Query embedding (256-dim list of floats).
+    category:
+        Only return results whose item has this ``semantic_category``.
+    k:
+        Maximum number of results.
+
+    Returns
+    -------
+    list[tuple[str, float]]
+        ``(item_id, cosine_distance)`` pairs sorted ascending by distance
+        (closest first).
+    """
+    stmt = text(
+        """
+        SELECT e.item_id,
+               e.embedding <=> CAST(:vec AS vector(256)) AS cosine_dist
+        FROM   item_embeddings e
+        JOIN   items i ON i.id = e.item_id
+        WHERE  i.semantic_category = :cat
+        ORDER BY cosine_dist
+        LIMIT  :k
+        """
+    )
+    rows = session.execute(
+        stmt, {"vec": str(vector), "cat": category, "k": k}
+    ).fetchall()
+    return [(row.item_id, float(row.cosine_dist)) for row in rows]

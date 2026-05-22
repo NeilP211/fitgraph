@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from fitgraph.db.session import apply_schema, get_engine, get_session
-from fitgraph.retrieval.pgvector_store import query, upsert_embeddings
+from fitgraph.retrieval.pgvector_store import query, query_by_category, upsert_embeddings
 
 DIM = 256
 
@@ -178,3 +178,76 @@ class TestQuery:
         #  the call returns a list without error)
         results = query(session, _unit_vec(seed=42), k=0)
         assert results == []
+
+
+# ---------------------------------------------------------------------------
+# query_by_category
+# ---------------------------------------------------------------------------
+
+
+def _seed_item_with_cat(session, item_id: str, category: str) -> None:
+    session.execute(
+        text(
+            """
+            INSERT INTO items (id, title, description, semantic_category,
+                               tags, search_doc, image_path)
+            VALUES (:id, '', '', :cat, ARRAY[]::text[],
+                    to_tsvector('english', ''), '')
+            ON CONFLICT (id) DO NOTHING
+            """
+        ),
+        {"id": item_id, "cat": category},
+    )
+    session.flush()
+
+
+class TestQueryByCategory:
+    def test_query_by_category_filters(self, session):
+        """Results are restricted to the requested category."""
+        vec = _unit_vec(seed=77)
+
+        _seed_item_with_cat(session, "zqxcatq_qa1", "zqxcatq_qa")
+        _seed_item_with_cat(session, "zqxcatq_qa2", "zqxcatq_qa")
+        _seed_item_with_cat(session, "zqxcatq_qb1", "zqxcatq_qb")
+
+        upsert_embeddings(
+            session,
+            [
+                ("zqxcatq_qa1", _unit_vec(seed=1)),
+                ("zqxcatq_qa2", _unit_vec(seed=2)),
+                ("zqxcatq_qb1", _unit_vec(seed=3)),
+            ],
+            model_version="v_test",
+        )
+        session.flush()
+
+        res = query_by_category(session, vec, "zqxcatq_qa", k=10)
+        ids = [r[0] for r in res]
+        assert all(i in {"zqxcatq_qa1", "zqxcatq_qa2"} for i in ids)
+        assert "zqxcatq_qb1" not in ids
+        assert len(ids) == 2
+
+    def test_query_by_category_respects_k(self, session):
+        """Respects the k limit."""
+        vec = _unit_vec(seed=88)
+        for i in range(5):
+            item_id = f"zqxcatq_k_{i}"
+            _seed_item_with_cat(session, item_id, "zqxcatq_klimit")
+            upsert_embeddings(session, [(item_id, _unit_vec(seed=i + 400))], model_version="v_test")
+        session.flush()
+
+        res = query_by_category(session, vec, "zqxcatq_klimit", k=2)
+        assert len(res) <= 2
+
+    def test_query_by_category_returns_ascending_distances(self, session):
+        """Distances are returned in ascending order (closest first)."""
+        vec = _unit_vec(seed=99)
+        for i in range(4):
+            item_id = f"zqxcatq_dist_{i}"
+            _seed_item_with_cat(session, item_id, "zqxcatq_distcat")
+            upsert_embeddings(session, [(item_id, _unit_vec(seed=i + 500))], model_version="v_test")
+        session.flush()
+
+        res = query_by_category(session, vec, "zqxcatq_distcat", k=4)
+        dists = [d for _, d in res]
+        assert dists == sorted(dists)

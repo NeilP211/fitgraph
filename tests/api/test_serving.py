@@ -297,3 +297,123 @@ class TestModelServiceEmbedImage:
         svc = ModelService()
         with pytest.raises(RuntimeError, match="not been loaded"):
             svc.embed_image(test_image)
+
+
+# ---------------------------------------------------------------------------
+# ModelService.suggest_by_categories
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def _pg_engine():
+    """Connect to Postgres for suggest_by_categories tests; skip if unavailable."""
+    try:
+        from sqlalchemy import text  # noqa: PLC0415
+        from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+        from fitgraph.db.session import apply_schema, get_engine  # noqa: PLC0415
+
+        eng = get_engine()
+        with eng.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        apply_schema(eng)
+        return eng
+    except Exception as exc:
+        pytest.skip(f"Postgres unavailable: {exc}")
+
+
+@pytest.fixture()
+def _pg_session(_pg_engine):
+    """Session rolled back after each test."""
+    from fitgraph.db.session import get_session  # noqa: PLC0415
+
+    factory = get_session(_pg_engine)
+    sess = factory()
+    sess.begin_nested()
+    yield sess
+    sess.rollback()
+    sess.close()
+
+
+def _seed_item_cat(session, item_id: str, title: str, cat: str) -> None:
+    from sqlalchemy import text  # noqa: PLC0415
+
+    session.execute(
+        text(
+            """
+            INSERT INTO items (id, title, description, semantic_category,
+                               tags, search_doc, image_path)
+            VALUES (:id, :title, '', :cat,
+                    ARRAY[:cat]::text[],
+                    to_tsvector('english', :title || ' ' || :cat), '')
+            ON CONFLICT (id) DO NOTHING
+            """
+        ),
+        {"id": item_id, "title": title, "cat": cat},
+    )
+    session.flush()
+
+
+def _seed_emb(session, item_id: str, vec: list[float]) -> None:
+    from fitgraph.retrieval.pgvector_store import upsert_embeddings  # noqa: PLC0415
+
+    upsert_embeddings(session, [(item_id, vec)], model_version="v1")
+
+
+def _rand_emb(seed: int = 0) -> list[float]:
+    import numpy as np  # noqa: PLC0415
+
+    rng = np.random.default_rng(seed)
+    v = rng.standard_normal(256).astype(np.float32)
+    v /= np.linalg.norm(v) + 1e-12
+    return v.tolist()
+
+
+class TestSuggestByCategories:
+    def test_suggest_excludes_seed_category(self, loaded_service: ModelService, _pg_session):
+        _seed_item_cat(_pg_session, "zqxsbc_seed", "seed top", "zqxsbc_tops")
+        _seed_emb(_pg_session, "zqxsbc_seed", _rand_emb(10))
+
+        for i in range(3):
+            _seed_item_cat(_pg_session, f"zqxsbc_bot_{i}", f"bottom {i}", "zqxsbc_bottoms")
+            _seed_emb(_pg_session, f"zqxsbc_bot_{i}", _rand_emb(i + 20))
+        for i in range(3):
+            _seed_item_cat(_pg_session, f"zqxsbc_shoe_{i}", f"shoe {i}", "zqxsbc_shoes")
+            _seed_emb(_pg_session, f"zqxsbc_shoe_{i}", _rand_emb(i + 30))
+        _pg_session.flush()
+
+        out = loaded_service.suggest_by_categories("zqxsbc_seed", _pg_session, per_category=2)
+
+        assert out["seed"]["item_id"] == "zqxsbc_seed"
+        # Seed's own category must not appear in suggestions
+        assert "zqxsbc_tops" not in out["suggestions"]
+
+    def test_per_category_cap(self, loaded_service: ModelService, _pg_session):
+        _seed_item_cat(_pg_session, "zqxsbc_cap_seed", "cap seed", "zqxsbc_cap_tops")
+        _seed_emb(_pg_session, "zqxsbc_cap_seed", _rand_emb(40))
+
+        for i in range(5):
+            _seed_item_cat(_pg_session, f"zqxsbc_cap_bot_{i}", f"bot {i}", "zqxsbc_cap_bottoms")
+            _seed_emb(_pg_session, f"zqxsbc_cap_bot_{i}", _rand_emb(i + 50))
+        _pg_session.flush()
+
+        out = loaded_service.suggest_by_categories("zqxsbc_cap_seed", _pg_session, per_category=2)
+        assert all(len(v) <= 2 for v in out["suggestions"].values())
+
+    def test_items_belong_to_correct_category(self, loaded_service: ModelService, _pg_session):
+        _seed_item_cat(_pg_session, "zqxsbc_cat_seed", "cat seed", "zqxsbc_cat_tops")
+        _seed_emb(_pg_session, "zqxsbc_cat_seed", _rand_emb(60))
+
+        for i in range(2):
+            _seed_item_cat(_pg_session, f"zqxsbc_cat_bot_{i}", f"bot {i}", "zqxsbc_cat_bottoms")
+            _seed_emb(_pg_session, f"zqxsbc_cat_bot_{i}", _rand_emb(i + 70))
+        _pg_session.flush()
+
+        out = loaded_service.suggest_by_categories("zqxsbc_cat_seed", _pg_session, per_category=4)
+
+        for cat, items in out["suggestions"].items():
+            assert all(it["semantic_category"] == cat for it in items)
+
+    def test_missing_seed_raises_key_error(self, loaded_service: ModelService, _pg_session):
+        with pytest.raises(KeyError):
+            loaded_service.suggest_by_categories("zqxsbc_nonexistent_xyz", _pg_session)

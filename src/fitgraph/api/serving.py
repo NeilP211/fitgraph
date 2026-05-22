@@ -312,6 +312,132 @@ class ModelService:
             )
         return results
 
+    def suggest_by_categories(
+        self,
+        seed_item_id: str,
+        session: Session,
+        per_category: int = 8,
+    ) -> dict:
+        """Return grouped outfit suggestions for a seed catalog item.
+
+        For each category in the catalog (excluding the seed's own), fetches
+        ``5*per_category`` ANN candidates, re-ranks by type-aware compatibility
+        score, and keeps the top ``per_category``.
+
+        Parameters
+        ----------
+        seed_item_id:
+            Primary key of the seed :class:`~fitgraph.db.models.Item`.
+        session:
+            Active SQLAlchemy session.
+        per_category:
+            Maximum number of suggestions to return per category.
+
+        Returns
+        -------
+        dict with keys:
+
+        - ``"seed"``: ``{item_id, title, semantic_category, image_path}``
+        - ``"suggestions"``: ``{category: [{item_id, score, title,
+          semantic_category, image_path}, ...]}``
+
+        Raises
+        ------
+        KeyError
+            If the seed item is not found in the catalog or has no embedding.
+        RuntimeError
+            If the model has not been loaded.
+        """
+        if self._scorer is None or self._type_index is None:
+            raise RuntimeError("ModelService has not been loaded. Call load() first.")
+
+        from fitgraph.db.models import Item, ItemEmbedding  # noqa: PLC0415
+        from fitgraph.db.queries import list_categories  # noqa: PLC0415
+        from fitgraph.retrieval.pgvector_store import query_by_category  # noqa: PLC0415
+
+        # Load seed item and its embedding
+        seed = session.get(Item, seed_item_id)
+        if seed is None:
+            raise KeyError(f"Seed item not found: {seed_item_id!r}")
+
+        seed_ie = session.get(ItemEmbedding, seed_item_id)
+        if seed_ie is None or seed_ie.embedding is None:
+            raise KeyError(f"No embedding for seed item: {seed_item_id!r}")
+
+        seed_emb = np.array(seed_ie.embedding, dtype=np.float32)
+        seed_cat = seed.semantic_category or ""
+
+        # Collect complementary categories
+        all_categories = list_categories(session)
+        comp_categories = [
+            c["category"] for c in all_categories if c["category"] != seed_cat
+        ]
+
+        suggestions: dict[str, list[dict]] = {}
+        for cat in comp_categories:
+            # ANN retrieval — 5*per_category candidates
+            cand_raw = query_by_category(
+                session, seed_emb.tolist(), cat, k=5 * per_category
+            )
+            if not cand_raw:
+                continue
+
+            cand_ids = [row[0] for row in cand_raw]
+
+            # Fetch item metadata
+            items_by_id: dict[str, Item] = {
+                item.id: item
+                for item in session.query(Item).filter(Item.id.in_(cand_ids)).all()
+            }
+            embs_by_id: dict[str, np.ndarray] = {}
+            for ie in (
+                session.query(ItemEmbedding)
+                .filter(ItemEmbedding.item_id.in_(cand_ids))
+                .all()
+            ):
+                if ie.embedding is not None:
+                    embs_by_id[ie.item_id] = np.array(ie.embedding, dtype=np.float32)
+
+            # Re-rank by type-aware score
+            scored: list[tuple[float, str]] = []
+            for item_id, _dist in cand_raw:
+                item = items_by_id.get(item_id)
+                if item is None:
+                    continue
+                cand_emb = embs_by_id.get(item_id)
+                if cand_emb is None:
+                    continue
+                cand_type = item.semantic_category or ""
+                s = self.score(seed_emb, seed_cat, cand_emb, cand_type)
+                scored.append((s, item_id))
+
+            if not scored:
+                continue
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top = scored[:per_category]
+
+            suggestions[cat] = [
+                {
+                    "item_id": item_id,
+                    "score": float(s),
+                    "title": items_by_id[item_id].title or "",
+                    "semantic_category": items_by_id[item_id].semantic_category or "",
+                    "image_path": items_by_id[item_id].image_path or "",
+                }
+                for s, item_id in top
+            ]
+
+        return {
+            "seed": {
+                "item_id": seed.id,
+                "title": seed.title or "",
+                "semantic_category": seed_cat,
+                "image_path": seed.image_path or "",
+            },
+            "suggestions": suggestions,
+        }
+
     # ------------------------------------------------------------------
     # Properties / lifecycle
     # ------------------------------------------------------------------

@@ -22,6 +22,16 @@ from fitgraph.models.hgat import HGAT
 from fitgraph.models.type_aware import TypeAwareScorer, TypeSpaceIndex
 
 # ---------------------------------------------------------------------------
+# Type-space config (same as in test_serving.py)
+# ---------------------------------------------------------------------------
+
+_TYPESPACES_FULL = [
+    ("tops", "bottoms"),
+    ("tops", "shoes"),
+    ("bottoms", "shoes"),
+]
+
+# ---------------------------------------------------------------------------
 # Helpers — synthetic checkpoint
 # ---------------------------------------------------------------------------
 
@@ -413,40 +423,201 @@ class TestCompatibility:
 
 
 # ---------------------------------------------------------------------------
-# /suggest
+# GET /catalog/categories
 # ---------------------------------------------------------------------------
 
 
-class TestSuggest:
-    def test_suggest_returns_schema(self, client, db_session):
-        """POST /suggest with a generated test image returns correct schema."""
-        emb = _random_emb()
-        _seed_item(db_session, "sug_001", "silk blouse", "tops")
-        _seed_item(db_session, "sug_002", "denim shorts", "bottoms")
-        _seed_embedding(db_session, "sug_001", emb)
-        _seed_embedding(db_session, "sug_002", emb)
+class TestCatalogCategories:
+    def test_categories_include_seeded_cats(self, client, db_session):
+        _seed_item(db_session, "zqxcc_a1", "item a1", "zqxcc_tops")
+        _seed_item(db_session, "zqxcc_a2", "item a2", "zqxcc_tops")
+        _seed_item(db_session, "zqxcc_b1", "item b1", "zqxcc_shoes")
         db_session.flush()
 
-        img_bytes = _make_image_bytes()
-        resp = client.post(
-            "/suggest",
-            data={"text": "blue shirt", "category": "tops", "k": "2"},
-            files={"image": ("test.jpg", img_bytes, "image/jpeg")},
+        resp = client.get("/catalog/categories")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "categories" in data
+        by_cat = {c["category"]: c["count"] for c in data["categories"]}
+        assert by_cat["zqxcc_tops"] == 2
+        assert by_cat["zqxcc_shoes"] == 1
+
+    def test_categories_ordered_by_count_desc(self, client, db_session):
+        for i in range(3):
+            _seed_item(db_session, f"zqxcc_ord_big_{i}", f"item {i}", "zqxcc_ord_big")
+        _seed_item(db_session, "zqxcc_ord_small_0", "item s", "zqxcc_ord_small")
+        db_session.flush()
+
+        resp = client.get("/catalog/categories")
+        assert resp.status_code == 200
+        cats = [c["category"] for c in resp.json()["categories"]]
+        idx_big = cats.index("zqxcc_ord_big")
+        idx_small = cats.index("zqxcc_ord_small")
+        assert idx_big < idx_small
+
+
+# ---------------------------------------------------------------------------
+# GET /catalog/items
+# ---------------------------------------------------------------------------
+
+
+class TestCatalogItems:
+    def test_filters_by_category(self, client, db_session):
+        _seed_item(db_session, "zqxci_t1", "top 1", "zqxci_tops")
+        _seed_item(db_session, "zqxci_t2", "top 2", "zqxci_tops")
+        _seed_item(db_session, "zqxci_s1", "shoe 1", "zqxci_shoes")
+        db_session.flush()
+
+        resp = client.get("/catalog/items", params={"category": "zqxci_tops"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["category"] == "zqxci_tops"
+        ids = [it["item_id"] for it in data["items"]]
+        assert "zqxci_t1" in ids
+        assert "zqxci_t2" in ids
+        assert "zqxci_s1" not in ids
+
+    def test_paginates(self, client, db_session):
+        for i in range(5):
+            _seed_item(db_session, f"zqxci_pag_{i}", f"item {i}", "zqxci_pag")
+        db_session.flush()
+
+        resp1 = client.get(
+            "/catalog/items", params={"category": "zqxci_pag", "limit": 2, "offset": 0}
+        )
+        resp2 = client.get(
+            "/catalog/items", params={"category": "zqxci_pag", "limit": 2, "offset": 2}
+        )
+        assert resp1.status_code == 200
+        assert resp2.status_code == 200
+        ids1 = {it["item_id"] for it in resp1.json()["items"]}
+        ids2 = {it["item_id"] for it in resp2.json()["items"]}
+        assert len(ids1) == 2
+        assert len(ids2) == 2
+        assert ids1 & ids2 == set()
+
+    def test_empty_for_unknown_category(self, client, db_session):
+        resp = client.get("/catalog/items", params={"category": "zqxci_nonexistent_xyz"})
+        assert resp.status_code == 200
+        assert resp.json()["items"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /items/{item_id}/outfit-suggestions
+# ---------------------------------------------------------------------------
+
+
+def _build_suggest_checkpoint(base: Path) -> Path:
+    """Build a synthetic checkpoint with tops/bottoms/shoes typespaces."""
+    vdir = base / "models" / "v1"
+    vdir.mkdir(parents=True)
+
+    type_index = TypeSpaceIndex(_TYPESPACES_FULL)
+    hgat = HGAT(in_dim=_IN_DIM, hidden_dim=_HIDDEN, num_layers=2, num_heads=4, dropout=0.0)
+    scorer = TypeAwareScorer(num_spaces=type_index.num_spaces, dim=_HIDDEN)
+
+    torch.save({"hgat": hgat.state_dict(), "scorer": scorer.state_dict()}, vdir / "model.pt")
+
+    type_index_data = type_index.to_dict()
+    type_index_data["item_types"] = {}
+    (vdir / "type_index.json").write_text(json.dumps(type_index_data))
+    (vdir / "meta.json").write_text(
+        json.dumps(
+            {
+                "version": "v1",
+                "in_dim": _IN_DIM,
+                "hidden_dim": _HIDDEN,
+                "num_layers": 2,
+                "num_heads": 4,
+                "dropout": 0.0,
+                "num_spaces": type_index.num_spaces,
+            }
+        )
+    )
+    return vdir
+
+
+class TestOutfitSuggestions:
+    @pytest.fixture()
+    def suggest_client(self, tmp_path, db_session):
+        """Client with a full synthetic model (tops/bottoms/shoes typespace)."""
+        from fastapi.testclient import TestClient  # noqa: PLC0415
+
+        ckpt = _build_suggest_checkpoint(tmp_path)
+        svc = ModelService()
+        svc.load(ckpt)
+
+        app = create_app()
+        from fitgraph.api.routes import _get_db, _get_svc  # noqa: PLC0415
+
+        def _override_db():
+            try:
+                yield db_session
+            except Exception:
+                db_session.rollback()
+                raise
+
+        app.dependency_overrides[_get_db] = _override_db
+        app.dependency_overrides[_get_svc] = lambda: svc
+
+        with TestClient(app, raise_server_exceptions=True) as c:
+            yield c
+
+    def test_outfit_suggestions_returns_seed_and_suggestions(self, suggest_client, db_session):
+        _seed_item(db_session, "zqxos_seed", "seed top", "zqxos_tops")
+        _seed_embedding(db_session, "zqxos_seed", _random_emb())
+
+        for i in range(3):
+            _seed_item(db_session, f"zqxos_bot_{i}", f"bottom {i}", "zqxos_bottoms")
+            _seed_embedding(db_session, f"zqxos_bot_{i}", _random_emb())
+        db_session.flush()
+
+        resp = suggest_client.get(
+            "/items/zqxos_seed/outfit-suggestions", params={"per_category": 2}
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["seed"]["item_id"] == "zqxos_seed"
         assert "suggestions" in data
-        assert "query" in data
-        # Each suggestion should have the required keys
-        for s in data["suggestions"]:
-            assert "item_id" in s
-            assert "score" in s
-            assert "title" in s
-            assert "semantic_category" in s
-            assert "image_path" in s
 
-    def test_suggest_no_model_503(self, db_session):
-        """Returns 503 when no model is loaded."""
+    def test_outfit_suggestions_excludes_seed_category(self, suggest_client, db_session):
+        _seed_item(db_session, "zqxos_excl_seed", "excl top", "zqxos_excl_tops")
+        _seed_embedding(db_session, "zqxos_excl_seed", _random_emb())
+
+        for i in range(2):
+            _seed_item(db_session, f"zqxos_excl_bot_{i}", f"bot {i}", "zqxos_excl_bottoms")
+            _seed_embedding(db_session, f"zqxos_excl_bot_{i}", _random_emb())
+        db_session.flush()
+
+        resp = suggest_client.get(
+            "/items/zqxos_excl_seed/outfit-suggestions", params={"per_category": 4}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "zqxos_excl_tops" not in data["suggestions"]
+
+    def test_outfit_suggestions_caps_per_category(self, suggest_client, db_session):
+        _seed_item(db_session, "zqxos_cap_seed", "cap top", "zqxos_cap_tops")
+        _seed_embedding(db_session, "zqxos_cap_seed", _random_emb())
+
+        for i in range(6):
+            _seed_item(db_session, f"zqxos_cap_bot_{i}", f"bot {i}", "zqxos_cap_bottoms")
+            _seed_embedding(db_session, f"zqxos_cap_bot_{i}", _random_emb())
+        db_session.flush()
+
+        resp = suggest_client.get(
+            "/items/zqxos_cap_seed/outfit-suggestions", params={"per_category": 2}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        for cat_items in data["suggestions"].values():
+            assert len(cat_items) <= 2
+
+    def test_outfit_suggestions_404_for_bogus_seed(self, suggest_client, db_session):
+        resp = suggest_client.get("/items/zqxos_bogus_nonexistent_xyz/outfit-suggestions")
+        assert resp.status_code == 404
+
+    def test_outfit_suggestions_503_no_model(self, db_session):
         from fastapi.testclient import TestClient  # noqa: PLC0415
 
         app = create_app()
@@ -458,13 +629,8 @@ class TestSuggest:
         app.dependency_overrides[_get_db] = _override_db
         app.dependency_overrides[_get_svc] = lambda: ModelService()
 
-        img_bytes = _make_image_bytes()
         with TestClient(app) as c:
-            resp = c.post(
-                "/suggest",
-                data={"text": "", "k": "5"},
-                files={"image": ("t.jpg", img_bytes, "image/jpeg")},
-            )
+            resp = c.get("/items/some_item/outfit-suggestions")
         assert resp.status_code == 503
 
 

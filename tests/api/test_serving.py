@@ -309,7 +309,6 @@ def _pg_engine():
     """Connect to Postgres for suggest_by_categories tests; skip if unavailable."""
     try:
         from sqlalchemy import text  # noqa: PLC0415
-        from sqlalchemy.exc import OperationalError  # noqa: PLC0415
 
         from fitgraph.db.session import apply_schema, get_engine  # noqa: PLC0415
 

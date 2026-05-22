@@ -30,7 +30,7 @@ class CompatibilityResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# /suggest
+# /suggest (kept for legacy serving.suggest; SuggestResponse removed)
 # ---------------------------------------------------------------------------
 
 
@@ -42,13 +42,55 @@ class SuggestionItem(BaseModel):
     image_path: str
 
 
-class SuggestQuery(BaseModel):
-    category: str | None = None
+# ---------------------------------------------------------------------------
+# /catalog/categories
+# ---------------------------------------------------------------------------
 
 
-class SuggestResponse(BaseModel):
-    query: SuggestQuery
-    suggestions: list[SuggestionItem]
+class CategoryCount(BaseModel):
+    category: str
+    count: int
+
+
+class CategoryListResponse(BaseModel):
+    categories: list[CategoryCount]
+
+
+# ---------------------------------------------------------------------------
+# /catalog/items
+# ---------------------------------------------------------------------------
+
+
+class CatalogItemOut(BaseModel):
+    item_id: str
+    title: str | None
+    semantic_category: str | None
+    image_path: str | None
+
+
+class CatalogItemsResponse(BaseModel):
+    category: str
+    limit: int
+    offset: int
+    items: list[CatalogItemOut]
+
+
+# ---------------------------------------------------------------------------
+# /items/{item_id}/outfit-suggestions
+# ---------------------------------------------------------------------------
+
+
+class OutfitSuggestionItem(BaseModel):
+    item_id: str
+    score: float
+    title: str
+    semantic_category: str
+    image_path: str
+
+
+class OutfitSuggestionsResponse(BaseModel):
+    seed: CatalogItemOut
+    suggestions: dict[str, list[OutfitSuggestionItem]]
 
 
 # ---------------------------------------------------------------------------

@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
 import numpy as np
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from fitgraph.api.schemas import (
     CatalogItem,
+    CatalogItemOut,
+    CatalogItemsResponse,
     CatalogSearchResponse,
+    CategoryCount,
+    CategoryListResponse,
     CompatibilityRequest,
     CompatibilityResponse,
     CreateOutfitRequest,
@@ -26,13 +29,17 @@ from fitgraph.api.schemas import (
     OutfitHistoryEntry,
     OutfitHistoryResponse,
     OutfitResponse,
-    SuggestionItem,
-    SuggestQuery,
-    SuggestResponse,
+    OutfitSuggestionItem,
+    OutfitSuggestionsResponse,
 )
 from fitgraph.api.serving import ModelService, get_model_service
 from fitgraph.db.models import Item, ItemEmbedding, Outfit, OutfitItem, Rating
-from fitgraph.db.queries import search_items_by_tag, user_outfit_history
+from fitgraph.db.queries import (
+    list_categories,
+    list_items_by_category,
+    search_items_by_tag,
+    user_outfit_history,
+)
 from fitgraph.db.session import get_engine, get_session
 
 logger = logging.getLogger(__name__)
@@ -139,47 +146,6 @@ def compatibility(
 
 
 # ---------------------------------------------------------------------------
-# POST /suggest
-# ---------------------------------------------------------------------------
-
-
-@router.post("/suggest", response_model=SuggestResponse)
-async def suggest(
-    svc: SvcDep,
-    db: DBSession,
-    image: Annotated[UploadFile, File()],
-    text: Annotated[str, Form()] = "",
-    category: Annotated[str | None, Form()] = None,
-    k: Annotated[int, Form()] = 12,
-) -> SuggestResponse:
-    """Embed an uploaded image and return top-k compatible catalog suggestions."""
-    _require_model(svc)
-
-    # Write upload to a temp file so ClipEncoder can open it with PIL
-    suffix = Path(image.filename or "upload.jpg").suffix or ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(await image.read())
-        tmp_path = Path(tmp.name)
-
-    try:
-        query_emb = svc.embed_image(tmp_path, text)
-    finally:
-        tmp_path.unlink(missing_ok=True)
-
-    # Resolve category
-    query_type = category or ""
-    if not query_type and svc._type_index is not None:
-        # Use fallback subspace label (empty string maps to fallback)
-        query_type = ""
-
-    suggestions_raw = svc.suggest(query_emb, query_type, db, k=k)
-    return SuggestResponse(
-        query=SuggestQuery(category=category),
-        suggestions=[SuggestionItem(**s) for s in suggestions_raw],
-    )
-
-
-# ---------------------------------------------------------------------------
 # POST /outfits
 # ---------------------------------------------------------------------------
 
@@ -279,6 +245,86 @@ def feedback(body: FeedbackRequest, db: DBSession, svc: SvcDep) -> FeedbackRespo
     )
     db.add(rating)
     return FeedbackResponse(status="ok")
+
+
+# ---------------------------------------------------------------------------
+# GET /catalog/categories
+# ---------------------------------------------------------------------------
+
+
+@router.get("/catalog/categories", response_model=CategoryListResponse)
+def catalog_categories(db: DBSession) -> CategoryListResponse:
+    """Return all non-empty semantic categories with item counts, descending."""
+    rows = list_categories(db)
+    return CategoryListResponse(
+        categories=[CategoryCount(category=r["category"], count=r["count"]) for r in rows]
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /catalog/items
+# ---------------------------------------------------------------------------
+
+
+@router.get("/catalog/items", response_model=CatalogItemsResponse)
+def catalog_items(
+    db: DBSession,
+    category: str = Query(..., description="Semantic category to browse"),
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> CatalogItemsResponse:
+    """Return paginated items for a given semantic category."""
+    items: list[Item] = list_items_by_category(db, category, limit=limit, offset=offset)
+    return CatalogItemsResponse(
+        category=category,
+        limit=limit,
+        offset=offset,
+        items=[
+            CatalogItemOut(
+                item_id=it.id,
+                title=it.title,
+                semantic_category=it.semantic_category,
+                image_path=it.image_path,
+            )
+            for it in items
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /items/{item_id}/outfit-suggestions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/items/{item_id}/outfit-suggestions", response_model=OutfitSuggestionsResponse)
+def outfit_suggestions(
+    item_id: str,
+    svc: SvcDep,
+    db: DBSession,
+    per_category: int = Query(default=8, ge=1, le=50),
+) -> OutfitSuggestionsResponse:
+    """Return grouped per-category outfit suggestions for a catalog seed item."""
+    _require_model(svc)
+
+    try:
+        result = svc.suggest_by_categories(item_id, db, per_category=per_category)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    seed_data = result["seed"]
+    seed_out = CatalogItemOut(
+        item_id=seed_data["item_id"],
+        title=seed_data["title"],
+        semantic_category=seed_data["semantic_category"],
+        image_path=seed_data["image_path"],
+    )
+
+    suggestions_out: dict[str, list[OutfitSuggestionItem]] = {
+        cat: [OutfitSuggestionItem(**item) for item in items]
+        for cat, items in result["suggestions"].items()
+    }
+
+    return OutfitSuggestionsResponse(seed=seed_out, suggestions=suggestions_out)
 
 
 # ---------------------------------------------------------------------------

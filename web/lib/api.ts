@@ -67,32 +67,74 @@ export async function getCompatibility(
 }
 
 // ---------------------------------------------------------------------------
-// /suggest
+// /catalog/categories
+// ---------------------------------------------------------------------------
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+}
+
+export interface CategoryListResponse {
+  categories: CategoryCount[];
+}
+
+export async function getCategories(): Promise<CategoryListResponse> {
+  return apiFetch<CategoryListResponse>("/catalog/categories");
+}
+
+// ---------------------------------------------------------------------------
+// /catalog/items
+// ---------------------------------------------------------------------------
+
+export interface CatalogItem {
+  item_id: string;
+  title: string | null;
+  semantic_category: string | null;
+  image_path: string | null;
+}
+
+export interface CatalogItemsResponse {
+  category: string;
+  limit: number;
+  offset: number;
+  items: CatalogItem[];
+}
+
+export async function getCatalogItems(
+  category: string,
+  limit = 24,
+  offset = 0
+): Promise<CatalogItemsResponse> {
+  return apiFetch<CatalogItemsResponse>(
+    `/catalog/items?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// /items/{item_id}/outfit-suggestions
 // ---------------------------------------------------------------------------
 
 export interface SuggestionItem {
   item_id: string;
   score: number;
-  title: string;
+  title: string | null;
   semantic_category: string;
-  image_path: string;
+  image_path: string | null;
 }
 
-export interface SuggestResponse {
-  query: { category: string | null };
-  suggestions: SuggestionItem[];
+export interface OutfitSuggestionsResponse {
+  seed: CatalogItem;
+  suggestions: Record<string, SuggestionItem[]>;
 }
 
-export async function getSuggestions(
-  image: File,
-  text?: string,
-  category?: string
-): Promise<SuggestResponse> {
-  const form = new FormData();
-  form.append("image", image);
-  if (text) form.append("text", text);
-  if (category) form.append("category", category);
-  return apiFetch<SuggestResponse>("/suggest", { method: "POST", body: form });
+export async function getOutfitSuggestions(
+  itemId: string,
+  perCategory = 8
+): Promise<OutfitSuggestionsResponse> {
+  return apiFetch<OutfitSuggestionsResponse>(
+    `/items/${encodeURIComponent(itemId)}/outfit-suggestions?per_category=${perCategory}`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -106,16 +148,25 @@ export interface OutfitResponse {
   item_ids: string[];
 }
 
+export async function saveOutfit(params: {
+  user_id: number;
+  name: string;
+  item_ids: string[];
+}): Promise<OutfitResponse> {
+  return apiFetch<OutfitResponse>("/outfits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+}
+
+/** @deprecated Use saveOutfit instead */
 export async function createOutfit(
   userId: number,
   name: string,
   itemIds: string[]
 ): Promise<OutfitResponse> {
-  return apiFetch<OutfitResponse>("/outfits", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, name, item_ids: itemIds }),
-  });
+  return saveOutfit({ user_id: userId, name, item_ids: itemIds });
 }
 
 export interface OutfitHistoryEntry {
@@ -141,7 +192,7 @@ export interface FeedbackResponse {
   status: string;
 }
 
-export async function postFeedback(
+export async function sendFeedback(
   userId: number,
   queryItemId: string,
   suggestedItemId: string,
@@ -159,28 +210,12 @@ export async function postFeedback(
   });
 }
 
-// ---------------------------------------------------------------------------
-// /catalog/search
-// ---------------------------------------------------------------------------
-
-export interface CatalogItem {
-  item_id: string;
-  title: string | null;
-  semantic_category: string | null;
-  image_path: string | null;
-  tags: string[] | null;
-}
-
-export interface CatalogSearchResponse {
-  items: CatalogItem[];
-  total: number;
-}
-
-export async function searchCatalog(
-  q: string,
-  limit = 20
-): Promise<CatalogSearchResponse> {
-  return apiFetch<CatalogSearchResponse>(
-    `/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`
-  );
+/** @deprecated Use sendFeedback instead */
+export async function postFeedback(
+  userId: number,
+  queryItemId: string,
+  suggestedItemId: string,
+  rating: 1 | -1
+): Promise<FeedbackResponse> {
+  return sendFeedback(userId, queryItemId, suggestedItemId, rating);
 }

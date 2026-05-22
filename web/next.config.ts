@@ -12,7 +12,17 @@ const nextConfig: NextConfig = {
         port: "8000",
         pathname: "/images/**",
       },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "8011",
+        pathname: "/images/**",
+      },
     ],
+  },
+  experimental: {
+    // Enables React ViewTransition component + transitionTypes on <Link>
+    viewTransition: true,
   },
 };
 

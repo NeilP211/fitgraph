@@ -6,6 +6,7 @@ import { getOutfitSuggestions, imageUrl } from "@/lib/api";
 import type { CatalogItem, OutfitSuggestionsResponse, SuggestionItem } from "@/lib/api";
 import SuggestionCard from "@/components/SuggestionCard";
 import OutfitTray from "@/components/OutfitTray";
+import { Reveal, RevealGroup, RevealItem } from "@/components/motion/Reveal";
 
 // ---------------------------------------------------------------------------
 // State machine
@@ -69,6 +70,8 @@ function SeedItem({ item }: { item: CatalogItem }) {
   const catLabel = item.semantic_category
     ? item.semantic_category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
     : null;
+  // view-transition-name to morph from browse card
+  const safeId = item.item_id.replace(/[^a-zA-Z0-9-_]/g, "_");
 
   return (
     <div className="flex items-center gap-4 rounded-sm bg-surface border border-rule p-4">
@@ -79,6 +82,7 @@ function SeedItem({ item }: { item: CatalogItem }) {
           fill
           sizes="80px"
           className="object-cover"
+          style={{ viewTransitionName: `catalog-img-${safeId}` }}
           unoptimized
         />
       </div>
@@ -245,85 +249,93 @@ export default function OutfitBuilder({ itemId }: OutfitBuilderProps) {
 
       <section className="mx-auto max-w-6xl px-6 pt-10 pb-32 space-y-10">
         {/* Page header */}
-        <div>
-          <div className="hr-rule mb-5" />
-          <h1
-            className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
-            style={{ fontFamily: "var(--font-display-var), serif" }}
-          >
-            Build Your Outfit
-          </h1>
-          <div className="hr-rule mt-4" />
-          <p
-            className="mt-3 text-base text-ink-soft"
-            style={{ fontFamily: "var(--font-body-var), serif" }}
-          >
-            Select one piece per category to compose a complete look.
-          </p>
-        </div>
+        <Reveal>
+          <div>
+            <div className="hr-rule mb-5" />
+            <h1
+              className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
+              style={{ fontFamily: "var(--font-display-var), serif" }}
+            >
+              Build Your Outfit
+            </h1>
+            <div className="hr-rule mt-4" />
+            <p
+              className="mt-3 text-base text-ink-soft"
+              style={{ fontFamily: "var(--font-body-var), serif" }}
+            >
+              Select one piece per category to compose a complete look.
+            </p>
+          </div>
+        </Reveal>
 
-        {/* Seed item */}
-        <SeedItem item={seed} />
+        {/* Seed item — morphs from browse card via view-transition-name */}
+        <Reveal delay={0.1}>
+          <SeedItem item={seed} />
+        </Reveal>
 
-        {/* Per-category suggestion sections */}
-        {categories.map((cat) => {
-          const items = suggestions[cat];
-          const catLabel = cat
-            .replace(/_/g, " ")
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+        {/* Per-category suggestion sections — staggered reveal */}
+        <RevealGroup stagger={0.12} className="space-y-10">
+          {categories.map((cat) => {
+            const items = suggestions[cat];
+            const catLabel = cat
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase());
 
-          return (
-            <div key={cat} className="space-y-3">
-              {/* Section header with hairline rule */}
-              <div className="flex items-center gap-3">
-                <h2
-                  className="text-sm font-semibold uppercase tracking-[0.14em] text-ink flex-shrink-0"
-                  style={{ fontFamily: "var(--font-display-var), serif" }}
-                >
-                  {catLabel}
-                </h2>
-                <div className="flex-1 h-px bg-rule" />
-                <span
-                  className="text-[10px] uppercase tracking-[0.1em] text-ink-soft flex-shrink-0"
-                  style={{ fontFamily: "var(--font-body-var), serif" }}
-                >
-                  {items.length} option{items.length !== 1 ? "s" : ""}
-                </span>
-                {selected[cat] && (
-                  <span
-                    className="ml-1 rounded-sm bg-accent/10 border border-accent/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-accent-deep flex-shrink-0"
-                    style={{ fontFamily: "var(--font-body-var), serif" }}
-                  >
-                    Selected
-                  </span>
-                )}
-              </div>
-
-              {/* Horizontal scroll row of suggestion cards */}
-              <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
-                {items.map((item) => (
-                  <div
-                    key={item.item_id}
-                    className="flex-shrink-0 w-44 snap-start"
-                  >
-                    <SuggestionCard
-                      item={item}
-                      queryItemId={itemId}
-                      selected={selected[cat] === item.item_id}
-                      onToggleSelect={() =>
-                        dispatch({
-                          type: "TOGGLE_SELECT",
-                          category: cat,
-                          itemId: item.item_id,
-                        })
-                      }
-                    />
+            return (
+              <RevealItem key={cat}>
+                <div className="space-y-3">
+                  {/* Section header with hairline rule */}
+                  <div className="flex items-center gap-3">
+                    <h2
+                      className="text-sm font-semibold uppercase tracking-[0.14em] text-ink flex-shrink-0"
+                      style={{ fontFamily: "var(--font-display-var), serif" }}
+                    >
+                      {catLabel}
+                    </h2>
+                    <div className="flex-1 h-px bg-rule" />
+                    <span
+                      className="text-[10px] uppercase tracking-[0.1em] text-ink-soft flex-shrink-0"
+                      style={{ fontFamily: "var(--font-body-var), serif" }}
+                    >
+                      {items.length} option{items.length !== 1 ? "s" : ""}
+                    </span>
+                    {selected[cat] && (
+                      <span
+                        className="ml-1 rounded-sm bg-accent/10 border border-accent/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-accent-deep flex-shrink-0"
+                        style={{ fontFamily: "var(--font-body-var), serif" }}
+                      >
+                        Selected
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+
+                  {/* Horizontal scroll row — suggestion cards stagger within row */}
+                  <RevealGroup stagger={0.055} className="flex gap-3 overflow-x-auto pb-2 snap-x">
+                    {items.map((item) => (
+                      <RevealItem
+                        key={item.item_id}
+                        className="flex-shrink-0 w-44 snap-start"
+                      >
+                        <SuggestionCard
+                          item={item}
+                          queryItemId={itemId}
+                          selected={selected[cat] === item.item_id}
+                          onToggleSelect={() =>
+                            dispatch({
+                              type: "TOGGLE_SELECT",
+                              category: cat,
+                              itemId: item.item_id,
+                            })
+                          }
+                        />
+                      </RevealItem>
+                    ))}
+                  </RevealGroup>
+                </div>
+              </RevealItem>
+            );
+          })}
+        </RevealGroup>
       </section>
     </main>
   );

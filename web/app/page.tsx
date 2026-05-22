@@ -11,12 +11,16 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-transparent">
-      {/* ── Runway Hero ── */}
+      {/* ── Marquee + Runway Hero (marquee lives inside RunwayHero) ── */}
       <div className="relative">
+        {/* RunwayHero renders: marquee band + catwalk stage */}
         <RunwayHero />
 
-        {/* Editorial overlay — title sits at the runway head */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pb-8 px-6 pointer-events-none">
+        {/* Editorial overlay — title sits at the runway head (over catwalk stage only) */}
+        <div
+          className="absolute left-0 right-0 bottom-0 flex flex-col items-center justify-center pb-8 px-6 pointer-events-none"
+          style={{ top: "34px" }} /* offset past the 34px marquee band */
+        >
           {/* Hairline rule above */}
           <div
             className="w-full max-w-2xl mb-5"

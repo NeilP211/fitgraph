@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { imageUrl, postFeedback } from "@/lib/api";
 import type { SuggestionItem } from "@/lib/api";
+import { CountUp } from "@/components/motion/CountUp";
 
 const DEMO_USER_ID = 1;
 
@@ -32,7 +33,7 @@ function ScoreBadge({ score }: { score: number }) {
       style={{ fontFamily: "var(--font-body-var), serif" }}
       title={`Raw score: ${score.toFixed(3)}`}
     >
-      {pct}%
+      <CountUp value={pct} suffix="%" duration={0.7} />
     </span>
   );
 }

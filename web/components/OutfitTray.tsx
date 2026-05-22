@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { AnimatePresence, motion } from "motion/react";
 import { saveOutfit, imageUrl } from "@/lib/api";
 import type { CatalogItem } from "@/lib/api";
+import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMotion";
 
 const DEMO_USER_ID = 1;
 
@@ -12,6 +14,38 @@ interface OutfitTrayProps {
   seedItem: CatalogItem;
   selectedIds: string[];
   seedItemId: string;
+}
+
+// ---------------------------------------------------------------------------
+// Camera flash overlay — brief white flash + sparkle on save
+// ---------------------------------------------------------------------------
+
+function CameraFlash({ onDone }: { onDone: () => void }) {
+  return (
+    <>
+      {/* White flash */}
+      <div
+        className="camera-flash fixed inset-0 z-[60] pointer-events-none bg-paper"
+        onAnimationEnd={onDone}
+        aria-hidden="true"
+      />
+      {/* Centre sparkle */}
+      <div
+        className="fixed inset-0 z-[61] pointer-events-none flex items-center justify-center"
+        aria-hidden="true"
+      >
+        <motion.div
+          initial={{ scale: 0.5, opacity: 0 }}
+          animate={{ scale: 1.5, opacity: [0, 1, 0] }}
+          transition={{ duration: 0.3, ease: "easeOut" }}
+          className="text-4xl select-none"
+          style={{ filter: "drop-shadow(0 0 8px var(--gold))" }}
+        >
+          ✦
+        </motion.div>
+      </div>
+    </>
+  );
 }
 
 export default function OutfitTray({
@@ -23,6 +57,8 @@ export default function OutfitTray({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedOutfitId, setSavedOutfitId] = useState<number | null>(null);
+  const [showFlash, setShowFlash] = useState(false);
+  const reduced = usePrefersReducedMotion();
 
   const allIds = [seedItemId, ...selectedIds];
   const pieceCount = allIds.length;
@@ -38,7 +74,18 @@ export default function OutfitTray({
         name: name.trim(),
         item_ids: allIds,
       });
-      setSavedOutfitId(outfit.outfit_id);
+      if (!reduced) {
+        // Trigger flash, then reveal success state after flash ends
+        setShowFlash(true);
+        // Stash outfit id so flash-done handler can set it
+        setTimeout(() => {
+          setSavedOutfitId(outfit.outfit_id);
+          setShowFlash(false);
+        }, 320);
+      } else {
+        // Reduced motion: skip flash, go straight to success
+        setSavedOutfitId(outfit.outfit_id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save outfit.");
     } finally {
@@ -49,7 +96,12 @@ export default function OutfitTray({
   // Success state
   if (savedOutfitId !== null) {
     return (
-      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl">
+      <motion.div
+        initial={reduced ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: "easeOut" }}
+        className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl"
+      >
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="flex h-8 w-8 items-center justify-center rounded-sm bg-accent/10 border border-accent/30 text-accent text-sm font-bold">
@@ -78,101 +130,113 @@ export default function OutfitTray({
             View Outfits
           </Link>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl">
-      <div className="mx-auto max-w-6xl px-6 py-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-          {/* Item strip */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span
-              className="text-[10px] uppercase tracking-[0.12em] text-ink-soft flex-shrink-0"
-              style={{ fontFamily: "var(--font-body-var), serif" }}
-            >
-              {pieceCount} piece{pieceCount !== 1 ? "s" : ""}:
-            </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto">
-              {/* Seed */}
-              <div
-                className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink"
-                title={seedItem.title || "Seed item"}
+    <>
+      {/* Camera flash — rendered outside tray so it covers entire screen */}
+      {showFlash && <CameraFlash onDone={() => {}} />}
+
+      <div className="fixed bottom-0 inset-x-0 z-40 border-t border-rule bg-surface/98 backdrop-blur-sm shadow-2xl">
+        <div className="mx-auto max-w-6xl px-6 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            {/* Item strip — AnimatePresence so items slide/scale in */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <span
+                className="text-[10px] uppercase tracking-[0.12em] text-ink-soft flex-shrink-0"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
               >
-                <Image
-                  src={imageUrl(seedItemId)}
-                  alt={seedItem.title || "Seed item"}
-                  fill
-                  sizes="40px"
-                  className="object-cover"
-                  unoptimized
-                />
-              </div>
-              {/* Selected items */}
-              {selectedIds.map((id) => (
+                {pieceCount} piece{pieceCount !== 1 ? "s" : ""}:
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                {/* Seed — always present */}
                 <div
-                  key={id}
-                  className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink-soft"
+                  className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink"
+                  title={seedItem.title || "Seed item"}
                 >
                   <Image
-                    src={imageUrl(id)}
-                    alt={`Selected item ${id}`}
+                    src={imageUrl(seedItemId)}
+                    alt={seedItem.title || "Seed item"}
                     fill
                     sizes="40px"
                     className="object-cover"
                     unoptimized
                   />
                 </div>
-              ))}
-              {/* Empty placeholder slots */}
-              {selectedIds.length === 0 && (
-                <span
-                  className="text-[10px] uppercase tracking-[0.1em] text-ink-soft pl-1"
-                  style={{ fontFamily: "var(--font-body-var), serif" }}
-                >
-                  Select items above to build your outfit
-                </span>
-              )}
-            </div>
-          </div>
 
-          {/* Save form */}
-          <form
-            onSubmit={handleSave}
-            className="flex items-center gap-2 flex-shrink-0"
-          >
-            <div className="flex flex-col gap-1">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Name this outfit…"
-                aria-label="Outfit name"
-                className="rounded-sm border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none focus:border-ink-soft focus:ring-1 focus:ring-rule w-44"
-                style={{ fontFamily: "var(--font-body-var), serif" }}
-              />
-              {error && (
-                <p
-                  role="alert"
-                  className="text-xs text-accent-deep"
-                  style={{ fontFamily: "var(--font-body-var), serif" }}
-                >
-                  {error}
-                </p>
-              )}
+                {/* Selected items — animate in/out */}
+                <AnimatePresence initial={false}>
+                  {selectedIds.map((id) => (
+                    <motion.div
+                      key={id}
+                      initial={reduced ? false : { scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={reduced ? {} : { scale: 0.5, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="relative flex-shrink-0 h-10 w-10 overflow-hidden rounded-sm bg-rule/30 ring-2 ring-ink-soft"
+                    >
+                      <Image
+                        src={imageUrl(id)}
+                        alt={`Selected item ${id}`}
+                        fill
+                        sizes="40px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+                {selectedIds.length === 0 && (
+                  <span
+                    className="text-[10px] uppercase tracking-[0.1em] text-ink-soft pl-1"
+                    style={{ fontFamily: "var(--font-body-var), serif" }}
+                  >
+                    Select items above to build your outfit
+                  </span>
+                )}
+              </div>
             </div>
-            <button
-              type="submit"
-              disabled={!name.trim() || saving || selectedIds.length === 0}
-              className="rounded-sm bg-accent px-5 py-2 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-              style={{ fontFamily: "var(--font-body-var), serif" }}
+
+            {/* Save form */}
+            <form
+              onSubmit={handleSave}
+              className="flex items-center gap-2 flex-shrink-0"
             >
-              {saving ? "Saving…" : "Save Outfit"}
-            </button>
-          </form>
+              <div className="flex flex-col gap-1">
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Name this outfit…"
+                  aria-label="Outfit name"
+                  className="rounded-sm border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none focus:border-ink-soft focus:ring-1 focus:ring-rule w-44"
+                  style={{ fontFamily: "var(--font-body-var), serif" }}
+                />
+                {error && (
+                  <p
+                    role="alert"
+                    className="text-xs text-accent-deep"
+                    style={{ fontFamily: "var(--font-body-var), serif" }}
+                  >
+                    {error}
+                  </p>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={!name.trim() || saving || selectedIds.length === 0}
+                className="rounded-sm bg-accent px-5 py-2 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
+                {saving ? "Saving…" : "Save Outfit"}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

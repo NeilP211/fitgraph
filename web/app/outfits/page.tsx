@@ -2,27 +2,34 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { AnimatePresence, motion } from "motion/react";
 import { getOutfits, imageUrl } from "@/lib/api";
 import type { OutfitHistoryEntry } from "@/lib/api";
 import Link from "next/link";
+import { Reveal, RevealGroup, RevealItem } from "@/components/motion/Reveal";
+import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMotion";
 
 const DEMO_USER_ID = 1;
 
 function OutfitCard({
   outfit,
+  index,
   onOpen,
 }: {
   outfit: OutfitHistoryEntry;
+  index: number;
   onOpen: () => void;
 }) {
   const visibleIds = outfit.item_ids.slice(0, 4);
   const extra = outfit.item_ids.length - visibleIds.length;
+  // Zero-padded look number e.g. "LOOK 01"
+  const lookLabel = `LOOK ${String(index + 1).padStart(2, "0")}`;
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full text-left rounded-sm bg-surface border border-rule overflow-hidden hover:border-ink-soft hover:shadow-md transition-all cursor-pointer"
+      className="block w-full text-left rounded-sm bg-surface border border-rule overflow-hidden hover:border-ink-soft hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
     >
       {/* Item image strip */}
       <div className="grid grid-cols-4 gap-0.5 bg-rule/40">
@@ -56,6 +63,13 @@ function OutfitCard({
 
       {/* Metadata */}
       <div className="p-4">
+        {/* LOOK NN label in Cinzel */}
+        <p
+          className="text-[10px] uppercase tracking-[0.18em] text-ink-soft mb-1"
+          style={{ fontFamily: "var(--font-display-var), serif" }}
+        >
+          {lookLabel}
+        </p>
         <p
           className="font-medium text-ink truncate"
           style={{ fontFamily: "var(--font-body-var), serif" }}
@@ -94,6 +108,8 @@ function OutfitDetailModal({
   outfit: OutfitHistoryEntry;
   onClose: () => void;
 }) {
+  const reduced = usePrefersReducedMotion();
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -103,15 +119,23 @@ function OutfitDetailModal({
   }, [onClose]);
 
   return (
-    <div
+    <motion.div
       role="dialog"
       aria-modal="true"
       aria-label={outfit.outfit_name || `Outfit ${outfit.outfit_id}`}
       onClick={onClose}
+      initial={reduced ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
     >
-      <div
+      <motion.div
         onClick={(e) => e.stopPropagation()}
+        initial={reduced ? false : { scale: 0.94, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.94, opacity: 0 }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
         className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-sm bg-surface border border-rule p-6"
       >
         <div className="flex items-start justify-between gap-4">
@@ -164,8 +188,8 @@ function OutfitDetailModal({
             </Link>
           ))}
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -200,29 +224,31 @@ export default function OutfitsPage() {
       <section className="mx-auto max-w-6xl px-6 pt-10 pb-16">
         {/* Page header */}
         <div className="hr-rule mb-6" />
-        <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h1
-              className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
-              style={{ fontFamily: "var(--font-display-var), serif" }}
-            >
-              Saved Outfits
-            </h1>
-            <p
-              className="mt-2 text-base text-ink-soft"
+        <Reveal>
+          <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <h1
+                className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
+                style={{ fontFamily: "var(--font-display-var), serif" }}
+              >
+                Saved Outfits
+              </h1>
+              <p
+                className="mt-2 text-base text-ink-soft"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              >
+                Your curated looks, all in one place.
+              </p>
+            </div>
+            <Link
+              href="/"
+              className="rounded-sm bg-accent px-5 py-2.5 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep transition-colors"
               style={{ fontFamily: "var(--font-body-var), serif" }}
             >
-              Your curated looks, all in one place.
-            </p>
+              New Outfit
+            </Link>
           </div>
-          <Link
-            href="/"
-            className="rounded-sm bg-accent px-5 py-2.5 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep transition-colors"
-            style={{ fontFamily: "var(--font-body-var), serif" }}
-          >
-            New Outfit
-          </Link>
-        </div>
+        </Reveal>
         <div className="hr-rule mb-8" />
 
         {/* Loading skeleton */}
@@ -246,6 +272,7 @@ export default function OutfitsPage() {
                   ))}
                 </div>
                 <div className="p-4 space-y-2">
+                  <div className="h-3 w-16 animate-pulse rounded-sm bg-rule/50" />
                   <div className="h-4 w-2/3 animate-pulse rounded-sm bg-rule/60" />
                   <div className="h-3 w-1/3 animate-pulse rounded-sm bg-rule/60" />
                 </div>
@@ -287,25 +314,34 @@ export default function OutfitsPage() {
           </div>
         )}
 
-        {/* Outfits grid */}
+        {/* Outfits grid — staggered reveal */}
         {!loading && !error && outfits.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {outfits.map((outfit) => (
-              <OutfitCard
-                key={outfit.outfit_id}
-                outfit={outfit}
-                onOpen={() => setSelected(outfit)}
-              />
+          <RevealGroup
+            stagger={0.07}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {outfits.map((outfit, idx) => (
+              <RevealItem key={outfit.outfit_id}>
+                <OutfitCard
+                  outfit={outfit}
+                  index={idx}
+                  onOpen={() => setSelected(outfit)}
+                />
+              </RevealItem>
             ))}
-          </div>
+          </RevealGroup>
         )}
       </section>
-      {selected && (
-        <OutfitDetailModal
-          outfit={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
+
+      {/* Animated modal */}
+      <AnimatePresence>
+        {selected && (
+          <OutfitDetailModal
+            outfit={selected}
+            onClose={() => setSelected(null)}
+          />
+        )}
+      </AnimatePresence>
     </main>
   );
 }

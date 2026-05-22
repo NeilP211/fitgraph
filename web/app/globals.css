@@ -90,3 +90,115 @@ html {
   border-top: 1px solid var(--rule);
   margin: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   View Transition CSS — animation recipes for page transitions & shared elements
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --duration-exit: 150ms;
+  --duration-enter: 210ms;
+  --duration-move: 380ms;
+}
+
+@keyframes vt-fade {
+  from { filter: blur(2px); opacity: 0; }
+  to { filter: blur(0); opacity: 1; }
+}
+
+@keyframes vt-slide {
+  from { translate: var(--slide-offset); }
+  to { translate: 0; }
+}
+
+@keyframes vt-slide-y {
+  from { transform: translateY(var(--slide-y-offset, 10px)); }
+  to { transform: translateY(0); }
+}
+
+/* Forward navigation (browse → build) */
+::view-transition-old(.nav-forward) {
+  --slide-offset: -50px;
+  animation:
+    var(--duration-exit) ease-in both vt-fade reverse,
+    var(--duration-move) ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.nav-forward) {
+  --slide-offset: 50px;
+  animation:
+    var(--duration-enter) ease-out var(--duration-exit) both vt-fade,
+    var(--duration-move) ease-in-out both vt-slide;
+}
+
+/* Back navigation */
+::view-transition-old(.nav-back) {
+  --slide-offset: 50px;
+  animation:
+    var(--duration-exit) ease-in both vt-fade reverse,
+    var(--duration-move) ease-in-out both vt-slide reverse;
+}
+::view-transition-new(.nav-back) {
+  --slide-offset: -50px;
+  animation:
+    var(--duration-enter) ease-out var(--duration-exit) both vt-fade,
+    var(--duration-move) ease-in-out both vt-slide;
+}
+
+/* Shared element morph (catalog card → builder seed) */
+::view-transition-group(.morph) {
+  animation-duration: var(--duration-move);
+}
+::view-transition-image-pair(.morph) {
+  animation-name: vt-via-blur;
+}
+@keyframes vt-via-blur {
+  30% { filter: blur(2px); }
+}
+
+/* Modal fade/scale enter+exit */
+@keyframes modal-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes modal-scale-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.94); }
+}
+
+/* Marquee scrolling band */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 22s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+}
+
+/* Camera flash — full-screen white overlay */
+@keyframes camera-flash {
+  0%   { opacity: 0; }
+  15%  { opacity: 0.92; }
+  100% { opacity: 0; }
+}
+
+.camera-flash {
+  animation: camera-flash 280ms ease-out forwards;
+}
+
+/* Reduced motion: collapse all View Transition animations */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}

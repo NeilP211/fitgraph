@@ -14,12 +14,8 @@
   --gold:         #B28A4E;   /* sepia — mid-tier badge */
   --rule:         #CFC1A4;   /* hairline borders / dividers */
 
-  /* Wrap background */
-  --wrap-base:    #F5E1E4;   /* warm blush — base fill of the step-and-repeat */
-  --wrap-text:    #D4899A;   /* deeper rose for the "HIGH FASHION" text */
-
   /* Legacy aliases used by Tailwind @theme below */
-  --background: var(--wrap-base);
+  --background: var(--paper);
   --foreground: var(--ink);
 }
 
@@ -51,8 +47,7 @@
    Base styles
    ───────────────────────────────────────────────────────────────────────────── */
 body {
-  /* transparent so the fixed WrapBackground SVG layer shows through */
-  background: transparent;
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--font-body-var), Georgia, "Times New Roman", serif;
 }

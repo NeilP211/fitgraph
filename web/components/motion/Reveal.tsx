@@ -50,11 +50,16 @@ export function Reveal({ children, delay = 0, className }: RevealProps) {
 /**
  * RevealGroup — a parent that staggered-reveals its children.
  * Each child should be a <RevealItem> or have its own delay.
+ *
+ * animateOnMount — when true the reveal plays immediately on mount
+ * (for above-the-fold content like the browse grid).  When false (default)
+ * the reveal is scroll-triggered via whileInView.
  */
 interface RevealGroupProps {
   children: ReactNode;
   stagger?: number; // seconds between each child
   className?: string;
+  animateOnMount?: boolean;
 }
 
 const groupVariants: Variants = {
@@ -73,11 +78,25 @@ const itemVariants: Variants = {
   },
 };
 
-export function RevealGroup({ children, stagger = 0.07, className }: RevealGroupProps) {
+export function RevealGroup({ children, stagger = 0.07, className, animateOnMount = false }: RevealGroupProps) {
   const reduced = usePrefersReducedMotion();
 
   if (reduced) {
     return <div className={className}>{children}</div>;
+  }
+
+  if (animateOnMount) {
+    return (
+      <motion.div
+        className={className}
+        initial="hidden"
+        animate="visible"
+        custom={stagger}
+        variants={groupVariants}
+      >
+        {children}
+      </motion.div>
+    );
   }
 
   return (

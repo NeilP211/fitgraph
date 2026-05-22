@@ -96,7 +96,7 @@ export default function RunwayHero() {
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden"
-        style={{ height: "340px" }}
+        style={{ height: "220px" }}
         aria-hidden="true"
       >
         {/* Background warm stage-light gradient — gold/sepia, no pink */}

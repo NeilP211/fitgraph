@@ -10,7 +10,7 @@ export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   return (
-    <main className="min-h-screen bg-transparent">
+    <main className="min-h-screen bg-paper">
       {/* ── Marquee + Runway Hero (marquee lives inside RunwayHero) ── */}
       <div className="relative">
         {/* RunwayHero renders: marquee band + catwalk stage */}

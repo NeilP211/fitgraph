@@ -230,6 +230,7 @@ export default function BrowseGrid({ category }: BrowseGridProps) {
       {/* Staggered reveal — "models walking out" sequence */}
       <RevealGroup
         stagger={0.045}
+        animateOnMount
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
       >
         {state.items.map((item) => (

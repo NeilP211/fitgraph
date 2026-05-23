@@ -14,20 +14,14 @@ type FigureVariant = 0 | 1 | 2 | 3 | 4;
 
 /** Returns an SVG path set for a given variant (head+shoulders silhouette). */
 function FigureSilhouette({ variant }: { variant: FigureVariant }) {
-  // Each variant: slightly different head size, shoulder width, torso taper
   const variants: Record<FigureVariant, React.ReactElement> = {
-    // Variant 0 — average build
     0: (
       <>
-        {/* Head */}
         <ellipse cx="20" cy="14" rx="7" ry="9" fill="currentColor" />
-        {/* Neck */}
         <rect x="17" y="22" width="6" height="5" rx="2" fill="currentColor" />
-        {/* Shoulders + torso */}
         <path d="M2 27 Q4 24 10 24 L17 26 L20 27 L23 26 L30 24 Q36 24 38 27 L36 52 Q30 56 20 56 Q10 56 4 52 Z" fill="currentColor" />
       </>
     ),
-    // Variant 1 — broader shoulders
     1: (
       <>
         <ellipse cx="20" cy="13" rx="6.5" ry="8.5" fill="currentColor" />
@@ -35,7 +29,6 @@ function FigureSilhouette({ variant }: { variant: FigureVariant }) {
         <path d="M0 26 Q3 22 11 23 L17 25 L20 26 L23 25 L29 23 Q37 22 40 26 L38 52 Q31 57 20 57 Q9 57 2 52 Z" fill="currentColor" />
       </>
     ),
-    // Variant 2 — petite / narrower
     2: (
       <>
         <ellipse cx="20" cy="14" rx="6" ry="8" fill="currentColor" />
@@ -43,7 +36,6 @@ function FigureSilhouette({ variant }: { variant: FigureVariant }) {
         <path d="M6 28 Q8 25 13 25 L17 27 L20 28 L23 27 L27 25 Q32 25 34 28 L33 52 Q27 56 20 56 Q13 56 7 52 Z" fill="currentColor" />
       </>
     ),
-    // Variant 3 — taller head, lean torso
     3: (
       <>
         <ellipse cx="20" cy="13" rx="6" ry="10" fill="currentColor" />
@@ -51,7 +43,6 @@ function FigureSilhouette({ variant }: { variant: FigureVariant }) {
         <path d="M5 27 Q7 24 12 24 L17 26 L20 27 L23 26 L28 24 Q33 24 35 27 L34 56 Q28 60 20 60 Q12 60 6 56 Z" fill="currentColor" />
       </>
     ),
-    // Variant 4 — rounder, wider
     4: (
       <>
         <ellipse cx="20" cy="15" rx="8" ry="10" fill="currentColor" />
@@ -75,15 +66,10 @@ function FigureSilhouette({ variant }: { variant: FigureVariant }) {
 }
 
 // ---------------------------------------------------------------------------
-// Sparkle burst — rendered above figure on cheer
+// Sparkle burst — rendered above a figure on cheer
 // ---------------------------------------------------------------------------
 
-interface SparkleProps {
-  id: string;
-}
-
-function SparkleBurst({ id }: SparkleProps) {
-  // 6 small ✦ / dot sparks radiating outward
+function SparkleBurst({ id }: { id: string }) {
   const sparks = [
     { angle: -80, dist: 22, char: "✦", size: 9 },
     { angle: -45, dist: 18, char: "·", size: 14 },
@@ -111,19 +97,8 @@ function SparkleBurst({ id }: SparkleProps) {
               y: Math.sin(rad) * s.dist,
               scale: [0.4, 1.2, 0.8],
             }}
-            transition={{
-              duration: 0.55,
-              delay: i * 0.03,
-              ease: "easeOut",
-            }}
-            style={{
-              position: "absolute",
-              fontSize: s.size,
-              color: "var(--gold)",
-              lineHeight: 1,
-              top: 0,
-              left: 0,
-            }}
+            transition={{ duration: 0.55, delay: i * 0.03, ease: "easeOut" }}
+            style={{ position: "absolute", fontSize: s.size, color: "var(--gold)", lineHeight: 1, top: 0, left: 0 }}
           >
             {s.char}
           </motion.span>
@@ -134,52 +109,50 @@ function SparkleBurst({ id }: SparkleProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Figure configuration — 14 audience members with staggered properties
+// Figure configuration
 // ---------------------------------------------------------------------------
 
 interface FigureConfig {
   variant: FigureVariant;
-  /** Width in px */
   width: number;
-  /** Height in px */
   height: number;
-  /** Vertical offset from the row baseline (negative = taller/closer) */
   yOffset: number;
-  /** Opacity: front row slightly more visible */
   opacity: number;
-  /** Idle sway: x amplitude in px */
   swayX: number;
-  /** Idle sway: rotation amplitude in deg */
   swayRot: number;
-  /** Phase offset for stagger (0–1) */
   phase: number;
-  /** Sway period in seconds */
   period: number;
 }
 
-const FIGURES: FigureConfig[] = [
-  // --- front row (larger, more visible) ---
-  { variant: 0, width: 32, height: 54, yOffset: 0,   opacity: 0.72, swayX: 2.5, swayRot: 1.5, phase: 0.0,  period: 3.4 },
-  { variant: 2, width: 28, height: 50, yOffset: 2,   opacity: 0.68, swayX: 2.0, swayRot: 1.2, phase: 0.3,  period: 3.8 },
-  { variant: 1, width: 34, height: 56, yOffset: -2,  opacity: 0.74, swayX: 3.0, swayRot: 1.8, phase: 0.6,  period: 3.1 },
-  { variant: 4, width: 30, height: 52, yOffset: 1,   opacity: 0.70, swayX: 1.8, swayRot: 1.0, phase: 0.85, period: 3.6 },
-  { variant: 3, width: 26, height: 48, yOffset: 3,   opacity: 0.65, swayX: 2.2, swayRot: 1.3, phase: 0.15, period: 4.0 },
-  { variant: 0, width: 31, height: 53, yOffset: 0,   opacity: 0.71, swayX: 2.8, swayRot: 1.6, phase: 0.5,  period: 3.3 },
-  { variant: 2, width: 27, height: 49, yOffset: 2,   opacity: 0.67, swayX: 1.5, swayRot: 0.9, phase: 0.72, period: 3.9 },
-  // --- back row (smaller, dimmer) ---
-  { variant: 1, width: 24, height: 42, yOffset: -8,  opacity: 0.42, swayX: 1.8, swayRot: 1.0, phase: 0.2,  period: 4.2 },
-  { variant: 3, width: 22, height: 38, yOffset: -6,  opacity: 0.38, swayX: 2.2, swayRot: 1.2, phase: 0.45, period: 3.7 },
-  { variant: 4, width: 26, height: 44, yOffset: -9,  opacity: 0.44, swayX: 1.6, swayRot: 0.8, phase: 0.65, period: 4.5 },
-  { variant: 0, width: 23, height: 40, yOffset: -7,  opacity: 0.40, swayX: 2.0, swayRot: 1.1, phase: 0.88, period: 3.5 },
-  { variant: 2, width: 25, height: 43, yOffset: -8,  opacity: 0.43, swayX: 1.4, swayRot: 0.7, phase: 0.1,  period: 4.1 },
-  { variant: 1, width: 21, height: 37, yOffset: -6,  opacity: 0.37, swayX: 2.4, swayRot: 1.4, phase: 0.35, period: 3.9 },
-  { variant: 3, width: 24, height: 41, yOffset: -9,  opacity: 0.41, swayX: 1.7, swayRot: 0.9, phase: 0.58, period: 4.3 },
-];
+/** Deterministically generate `count` figure configs (stable across SSR/CSR). */
+function makeConfigs(count: number): FigureConfig[] {
+  const rnd = (n: number) => {
+    const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const out: FigureConfig[] = [];
+  for (let i = 0; i < count; i++) {
+    const r1 = rnd(i + 1);
+    const r2 = rnd(i + 41);
+    const r3 = rnd(i + 97);
+    const back = i % 3 === 2; // ~1/3 form a dimmer, smaller back row
+    out.push({
+      variant: (Math.floor(r1 * 5) % 5) as FigureVariant,
+      width: back ? 18 + Math.round(r2 * 6) : 24 + Math.round(r2 * 10),
+      height: back ? 32 + Math.round(r3 * 8) : 44 + Math.round(r3 * 12),
+      yOffset: back ? -6 - Math.round(r1 * 6) : Math.round(r2 * 4),
+      opacity: back ? 0.3 + r3 * 0.12 : 0.55 + r3 * 0.22,
+      swayX: 1.2 + r1 * 2,
+      swayRot: 0.6 + r2 * 1.2,
+      phase: r3,
+      period: 3 + r1 * 1.6,
+    });
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
-// Idle sway — CSS keyframe approach (no JS loop needed, pure CSS)
-// We define the keyframes inline via a <style> tag injected once.
-// Each figure gets a unique animation-delay based on its phase.
+// Idle sway — CSS keyframes injected once
 // ---------------------------------------------------------------------------
 
 const IDLE_STYLE_ID = "audience-idle-keyframes";
@@ -218,7 +191,6 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
   const [cheering, setCheering] = useState(false);
   const uid = useId();
 
-  // Ensure CSS keyframes are in the document
   if (typeof window !== "undefined") {
     ensureIdleKeyframes();
   }
@@ -240,7 +212,6 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
     [handleCheer]
   );
 
-  // Cheer Framer Motion variants — on the button itself (vertical jump)
   const cheerVariants = {
     idle: { y: 0, scale: 1 },
     cheer: reduced
@@ -252,12 +223,9 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
     ? { duration: 0.3, ease: "easeOut" as const }
     : { duration: 0.65, ease: [0.22, 1, 0.36, 1] as [number, number, number, number], times: [0, 0.3, 0.5, 0.7, 1] };
 
-  // Idle CSS sway — on an inner div (child of the FM button) so transforms don't conflict
   const idleInnerStyle: React.CSSProperties = !reduced
     ? {
-        animation: cheering
-          ? "none"
-          : `audience-sway ${config.period}s ease-in-out infinite`,
+        animation: cheering ? "none" : `audience-sway ${config.period}s ease-in-out infinite`,
         animationDelay: `${-config.phase * config.period}s`,
         ["--sway-x" as string]: `${config.swayX}px`,
         ["--sway-rot" as string]: `${config.swayRot}deg`,
@@ -268,11 +236,7 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
     : { width: "100%", height: "100%" };
 
   return (
-    <div
-      className="relative flex-shrink-0"
-      style={{ width: config.width, height: config.height + 10 }}
-    >
-      {/* Sparkle burst — shown on cheer */}
+    <div className="relative flex-shrink-0" style={{ width: config.width, height: config.height + 10 }}>
       <AnimatePresence>
         {cheering && !reduced && (
           <motion.div
@@ -287,7 +251,6 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
         )}
       </AnimatePresence>
 
-      {/* Clickable figure — FM controls cheer jump; inner div handles CSS idle sway */}
       <motion.button
         type="button"
         className="audience-figure absolute bottom-0 left-0 cursor-pointer bg-transparent border-0 p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--gold)]"
@@ -306,9 +269,8 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
         transition={cheerTransition}
         onClick={handleCheer}
         onKeyDown={handleKeyDown}
-        tabIndex={index < 4 ? 0 : -1}
+        tabIndex={index < 3 ? 0 : -1}
       >
-        {/* Inner div carries CSS sway animation (separate transform layer from FM) */}
         <div className="audience-figure" style={idleInnerStyle}>
           <FigureSilhouette variant={config.variant} />
         </div>
@@ -318,51 +280,37 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
 }
 
 // ---------------------------------------------------------------------------
-// Public props
+// Public props + component
 // ---------------------------------------------------------------------------
 
 export interface AudienceProps {
-  /** Called each time any figure is clicked to cheer. No-op by default. Phase 3 will wire audio here. */
+  /** Called each time any figure is clicked to cheer. */
   onCheer?: () => void;
   /** Additional CSS class for the wrapper */
   className?: string;
+  /** How many figures to render (default 14). */
+  count?: number;
+  /** "row" = crowd row (front); "column" = side flank. */
+  layout?: "row" | "column";
 }
 
-// ---------------------------------------------------------------------------
-// Audience component — the full crowd row
-// ---------------------------------------------------------------------------
-
-export default function Audience({ onCheer, className }: AudienceProps) {
+export default function Audience({ onCheer, className, count = 14, layout = "row" }: AudienceProps) {
   const reduced = usePrefersReducedMotion();
+  const figures = makeConfigs(count);
+  const isColumn = layout === "column";
 
   return (
-    <div
-      className={`relative w-full overflow-hidden ${className ?? ""}`}
-      aria-label="Audience"
-      role="group"
-    >
-      {/* Subtle stage-floor line */}
+    <div className={`relative ${className ?? ""}`} aria-label="Audience" role="group">
       <div
-        className="absolute top-0 left-0 right-0 h-px"
-        style={{ background: "var(--rule)", opacity: 0.6 }}
-        aria-hidden="true"
-      />
-
-      {/* Crowd row — flex, centered, slight perspective crush */}
-      <div
-        className="flex items-end justify-center gap-0.5 pt-1 pb-0 px-2 flex-wrap"
+        className={
+          isColumn
+            ? "flex flex-col items-center gap-1"
+            : "flex flex-wrap items-end justify-center gap-x-0.5 gap-y-1 px-2"
+        }
       >
-        {FIGURES.map((cfg, i) => (
-          <div
-            key={i}
-            style={{ marginTop: cfg.yOffset < 0 ? Math.abs(cfg.yOffset) : 0 }}
-          >
-            <AudienceFigure
-              config={cfg}
-              index={i}
-              reduced={reduced}
-              onCheer={onCheer}
-            />
+        {figures.map((cfg, i) => (
+          <div key={i} style={{ marginTop: cfg.yOffset < 0 ? Math.abs(cfg.yOffset) : 0 }}>
+            <AudienceFigure config={cfg} index={i} reduced={reduced} onCheer={onCheer} />
           </div>
         ))}
       </div>

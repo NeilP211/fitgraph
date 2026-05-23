@@ -227,3 +227,66 @@ body.theater-dark > header { display: none; }
 }
 
 .theater-vignette { box-shadow: inset 0 0 240px 80px rgba(0, 0, 0, 0.92); }
+
+/* Stage + perspective runway (catwalk receding upstage under the spotlight) */
+.show-stage {
+  position: relative;
+  width: 100%;
+  min-height: 64vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Faint upstage backdrop glow — reads as the back of the stage */
+.show-stage-backdrop {
+  position: absolute;
+  top: 2%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(212, 175, 110, 0.20), transparent 72%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.show-runway {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  width: 100%;
+  perspective: 760px;
+}
+
+/* The catwalk floor: a lit plane tilted back into the dark */
+.show-runway-floor {
+  position: absolute;
+  bottom: -1%;
+  left: 50%;
+  width: 340px;
+  height: 560px;
+  transform: translateX(-50%) rotateX(66deg);
+  transform-origin: bottom center;
+  background: linear-gradient(
+    to top,
+    rgba(212, 175, 110, 0.24) 0%,
+    rgba(212, 175, 110, 0.08) 42%,
+    rgba(212, 175, 110, 0) 80%
+  );
+  border-left: 1px solid rgba(212, 175, 110, 0.30);
+  border-right: 1px solid rgba(212, 175, 110, 0.30);
+  border-radius: 3px;
+  box-shadow: 0 0 90px rgba(212, 175, 110, 0.12);
+  pointer-events: none;
+}
+/* Center sheen down the middle of the catwalk */
+.show-runway-floor::after {
+  content: "";
+  position: absolute;
+  inset: 0 38%;
+  background: linear-gradient(to top, rgba(255, 240, 210, 0.12), transparent 62%);
+}

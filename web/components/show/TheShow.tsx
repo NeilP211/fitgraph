@@ -4,11 +4,11 @@ import { useEffect, useReducer, useState } from "react";
 import { getOutfitSuggestions } from "@/lib/api";
 import { reducer, currentCandidate, type State } from "@/components/show/showReducer";
 import TheaterScene from "@/components/show/TheaterScene";
+import Stage from "@/components/show/Stage";
 import SlotPicker from "@/components/show/SlotPicker";
 import SpotlightSuggestion from "@/components/show/SpotlightSuggestion";
 import SavePanel from "@/components/show/SavePanel";
-import StageFigure, { type StageFigureItem } from "@/components/StageFigure";
-import Audience from "@/components/Audience";
+import type { StageFigureItem } from "@/components/StageFigure";
 import { useShowAudio } from "@/components/audio/useShowAudio";
 
 /**
@@ -97,39 +97,36 @@ export default function TheShow({ itemId }: { itemId: string }) {
   return (
     <TheaterScene soundOn={soundOn} onToggleSound={toggleMusic}>
       <h1
-        className="mb-3 text-2xl uppercase tracking-[0.2em] text-[#d4af6e]"
+        className="text-xl uppercase tracking-[0.24em] text-[#d4af6e]"
         style={{ fontFamily: "var(--font-display-var), serif" }}
       >
         The Show
       </h1>
 
-      <StageFigure figureHeight={420} items={figureItems} />
+      <Stage items={figureItems} onCheer={roar} />
 
-      <div className="my-4 w-full">
-        <Audience onCheer={roar} />
-      </div>
-
-      {state.activeSlot ? (
-        <SpotlightSuggestion
-          slot={state.activeSlot}
-          candidate={cand}
-          exhausted={exhausted}
-          onAccept={onAccept}
-          onReject={() => dispatch({ type: "REJECT" })}
-        />
-      ) : (
-        <p className="py-6 text-sm text-[#f4ecd8]/60" style={{ fontFamily: "var(--font-body-var), serif" }}>
-          Pick a piece below to add it to the look.
-        </p>
-      )}
-
-      <div className="mt-6 w-full max-w-sm">
-        <SavePanel
-          seedItemId={itemId}
-          selectedIds={selectedIds}
-          savedName={savedName}
-          setSavedName={setSavedName}
-        />
+      {/*
+        Foreground control zone — pinned just above the dock so the stage stays
+        uncluttered. Shows the active suggestion, else a compact save bar once
+        pieces exist, else nothing.
+      */}
+      <div className="fixed bottom-24 left-1/2 z-30 w-full max-w-md -translate-x-1/2 px-4">
+        {state.activeSlot ? (
+          <SpotlightSuggestion
+            slot={state.activeSlot}
+            candidate={cand}
+            exhausted={exhausted}
+            onAccept={onAccept}
+            onReject={() => dispatch({ type: "REJECT" })}
+          />
+        ) : selectedIds.length > 0 ? (
+          <SavePanel
+            seedItemId={itemId}
+            selectedIds={selectedIds}
+            savedName={savedName}
+            setSavedName={setSavedName}
+          />
+        ) : null}
       </div>
 
       <SlotPicker

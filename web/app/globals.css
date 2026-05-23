@@ -205,6 +205,9 @@ html {
    dark stage with no prop plumbing (Tailwind v4 @theme inline references vars).
    ───────────────────────────────────────────────────────────────────────────── */
 body.theater-dark { background: #0a0a0b; }
+/* Hide the site header while the theater is on stage — it's visually covered by
+   the z-100 scene anyway; this also drops it from the tab order + a11y tree. */
+body.theater-dark > header { display: none; }
 
 .theater-spotlight {
   --paper:       #0a0a0b;

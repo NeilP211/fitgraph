@@ -1,28 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CategoryNav from "@/components/CategoryNav";
 import BrowseGrid from "@/components/BrowseGrid";
+import SearchGrid from "@/components/SearchGrid";
 import RunwayHero from "@/components/RunwayHero";
 import FashionBand from "@/components/FashionBand";
 import { Reveal } from "@/components/motion/Reveal";
 
 export default function HomePage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [debounced, setDebounced] = useState("");
+
+  // Debounce the search box so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 320);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const searching = debounced.length > 0;
 
   return (
     <main className="min-h-screen bg-paper">
-      {/* ── Runway hero — a pure visual stage (marquee + catwalk + floats).
-           No editorial text overlays it anymore, so nothing collides with
-           the floating models. RunwayHero is owned by the runway workstream. ── */}
       <RunwayHero />
 
-      {/* ── Catalog area: drifting HIGH FASHION backdrop behind a clean,
-           centered editorial lockup + the browse grid ── */}
       <div className="relative isolate overflow-hidden">
         <FashionBand top="38%" />
 
-        {/* Editorial header — moved off the runway, sits on plain paper */}
+        {/* Editorial header */}
         <section className="relative z-10 mx-auto max-w-6xl px-6 pt-12 pb-2">
           <div className="mx-auto max-w-2xl flex flex-col items-center text-center">
             <div className="hr-rule w-full max-w-md mb-5" />
@@ -59,19 +65,62 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Category pills */}
-        <section className="relative z-10 mx-auto max-w-6xl px-6 pb-6 pt-6">
-          <Reveal delay={0.1}>
-            <CategoryNav
-              selected={selectedCategory}
-              onSelect={setSelectedCategory}
-            />
+        {/* Search */}
+        <section className="relative z-10 mx-auto max-w-6xl px-6 pt-6">
+          <Reveal delay={0.05}>
+            <div className="mx-auto flex max-w-xl items-center gap-2 rounded-sm border border-rule bg-surface px-4 py-2.5 transition-colors focus-within:border-ink-soft">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="shrink-0 text-ink-soft"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search the catalog…"
+                aria-label="Search the catalog"
+                className="w-full bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                style={{ fontFamily: "var(--font-body-var), serif" }}
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="shrink-0 px-1 text-xl leading-none text-ink-soft hover:text-ink"
+                >
+                  ×
+                </button>
+              )}
+            </div>
           </Reveal>
         </section>
 
-        {/* Item grid */}
-        <section className="relative z-10 mx-auto max-w-6xl px-6 pb-16">
-          {selectedCategory ? (
+        {/* Category pills (hidden while searching) */}
+        {!searching && (
+          <section className="relative z-10 mx-auto max-w-6xl px-6 pb-6 pt-6">
+            <Reveal delay={0.1}>
+              <CategoryNav selected={selectedCategory} onSelect={setSelectedCategory} />
+            </Reveal>
+          </section>
+        )}
+
+        {/* Item grid: search results, else category browse, else a prompt */}
+        <section className="relative z-10 mx-auto max-w-6xl px-6 pb-16 pt-6">
+          {searching ? (
+            <SearchGrid query={debounced} />
+          ) : selectedCategory ? (
             <BrowseGrid category={selectedCategory} />
           ) : (
             <div className="rounded-sm bg-surface border border-rule p-16 text-center">
@@ -85,7 +134,7 @@ export default function HomePage() {
                 className="text-sm text-ink-soft"
                 style={{ fontFamily: "var(--font-body-var), serif" }}
               >
-                Choose a category above to explore catalog items.
+                Choose a category above, or search the catalog.
               </p>
             </div>
           )}

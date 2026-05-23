@@ -112,6 +112,25 @@ export async function getCatalogItems(
 }
 
 // ---------------------------------------------------------------------------
+// /catalog/search
+// ---------------------------------------------------------------------------
+
+export interface CatalogSearchResponse {
+  items: CatalogItem[];
+  total: number;
+}
+
+/** Full-text catalog search (Postgres tsvector) via /catalog/search. */
+export async function searchCatalog(
+  q: string,
+  limit = 24
+): Promise<CatalogSearchResponse> {
+  return apiFetch<CatalogSearchResponse>(
+    `/catalog/search?q=${encodeURIComponent(q)}&limit=${limit}`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // /items/{item_id}/outfit-suggestions
 // ---------------------------------------------------------------------------
 

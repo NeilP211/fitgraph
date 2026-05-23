@@ -177,6 +177,26 @@ html {
   }
 }
 
+/* Oversized editorial backdrop — drifts slowly behind content (FashionBand).
+   Deliberately much slower than .marquee-track so the two never read alike. */
+@keyframes fashion-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.fashion-band {
+  display: flex;
+  width: max-content;
+  animation: fashion-drift 64s linear infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fashion-band {
+    animation: none;
+  }
+}
+
 /* Camera flash — full-screen white overlay */
 @keyframes camera-flash {
   0%   { opacity: 0; }

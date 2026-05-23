@@ -8,7 +8,8 @@
  *
  * Design:
  *  - Single "sound on/off" toggle, persisted to localStorage (key: fitgraph_audio).
- *  - OFF by default — never autoplays; music only starts on a user gesture.
+ *  - ON by default — but autoplay-safe: nothing plays until the first user
+ *    gesture (call arm()); only OFF if the user explicitly toggled it off.
  *  - When ON:  ambient runway pad loops + cheers play on demand.
  *  - When OFF: both are silenced.
  *  - SSR-safe: all Web Audio / localStorage access is guarded behind typeof checks.
@@ -157,16 +158,23 @@ interface ShowAudioState {
   toggleMusic: () => void;
   /** Play the cheer SFX if sound is ON. Safe to call unconditionally. */
   playCheer: () => void;
+  /**
+   * Arm audio on the first user gesture: resumes the AudioContext and starts
+   * the ambient pad if sound is ON. No-op when sound is OFF. Browser
+   * autoplay-safe — must be called from within a user-gesture handler.
+   */
+  arm: () => void;
 }
 
 export function useShowAudio(): ShowAudioState {
   // Read initial persisted value (default: OFF)
   const [soundOn, setSoundOn] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
+    if (typeof window === "undefined") return true;
     try {
-      return localStorage.getItem(STORAGE_KEY) === "on";
+      // Default ON — only off if the user explicitly turned it off.
+      return localStorage.getItem(STORAGE_KEY) !== "off";
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -248,6 +256,13 @@ export function useShowAudio(): ShowAudioState {
     playApplauseSFX(ctx);
   }, [getCtx]);
 
+  /** Arm audio on first user gesture: resume ctx + start the pad if ON. */
+  const arm = useCallback(() => {
+    if (!soundOnRef.current) return;
+    getCtx();   // creates + resumes the AudioContext (needs a user gesture)
+    startPad(); // idempotent — won't double-start
+  }, [getCtx, startPad]);
+
   // If page is reloaded with soundOn=true from localStorage, auto-start pad
   // ONLY after a user gesture has resumed the AudioContext.
   // We do NOT start on mount — we wait for the first toggleMusic or playCheer.
@@ -265,5 +280,5 @@ export function useShowAudio(): ShowAudioState {
     };
   }, [stopPad]);
 
-  return { soundOn, toggleMusic, playCheer };
+  return { soundOn, toggleMusic, playCheer, arm };
 }

@@ -32,3 +32,6 @@ web/.env*.local
 .DS_Store
 .idea/
 .vscode/
+
+# demo launcher runtime (pids/logs)
+.demo/

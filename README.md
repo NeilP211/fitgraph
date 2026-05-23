@@ -179,10 +179,28 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 # 8. Start the FastAPI backend (pick a free port, e.g. 8011)
 .venv/bin/uvicorn fitgraph.api.main:create_app --factory --port 8011
 
-# 9. Start the Next.js frontend pointed at the API
+# 9. Point the frontend at the API and install deps
 echo "NEXT_PUBLIC_API_URL=http://localhost:8011" > web/.env.local
-cd web && npm install && npm run dev
+cd web && npm install && cd ..
 ```
+
+### Running the app
+
+**Recommended (and required on 16 GB Macs) — one command, production build:**
+
+```bash
+scripts/demo_up.sh     # Docker + API (:8011) + prod web (:3012) + memory watchdog
+scripts/demo_down.sh   # stop everything
+```
+
+> ⚠️ **Do not use `npm run dev` on a 16 GB Mac.** Next.js 16's Turbopack compiles
+> the homepage route on-demand the first time a browser loads it, and that
+> dev-mode compile balloons system memory to **~8 GB in seconds** — enough to
+> thrash swap and hard-freeze the machine (a forced power-button reboot). The
+> production build (`next build` + `next start`, what `demo_up.sh` runs) serves
+> the same page in **~1 GB**. `demo_up.sh` also starts a memory-pressure watchdog
+> that stops the stack gracefully before the OS can hang. If you have ≥32 GB and
+> want hot-reload, `cd web && npm run dev` is fine.
 
 The default config trains on a 5,000-outfit subset so an end-to-end run completes quickly on a laptop. Add `--full` to steps 4 and 5 to reproduce the published 0.848 AUC (35k outfits, 152k items, ~25 epochs on Apple Silicon MPS).
 

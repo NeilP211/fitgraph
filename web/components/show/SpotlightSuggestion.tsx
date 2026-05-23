@@ -33,7 +33,7 @@ export default function SpotlightSuggestion({
         className="py-10 text-center text-sm text-[#f4ecd8]/60"
         style={{ fontFamily: "var(--font-body-var), serif" }}
       >
-        No more {label(slot)} pieces — pick another slot.
+        No more {label(slot)} pieces. Pick another slot.
       </p>
     );
   }
@@ -57,7 +57,7 @@ export default function SpotlightSuggestion({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -40 }}
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-          className="relative aspect-square w-56 overflow-hidden rounded-sm border border-[#f4ecd8]/15 bg-black/40"
+          className="relative aspect-square w-44 overflow-hidden rounded-sm border border-[#f4ecd8]/15 bg-black/40"
         >
           <Image
             src={imageUrl(candidate.item_id)}

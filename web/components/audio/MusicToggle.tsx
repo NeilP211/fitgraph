@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * MusicToggle — Phase 3 of "The Show"
+ * MusicToggle - Phase 3 of "The Show"
  *
  * A small, tasteful ♪ / muted button overlaid on the stage.
  * On-palette (ink / terracotta), keyboard-accessible.
@@ -23,7 +23,7 @@ export default function MusicToggle({ soundOn, onToggle, className = "" }: Music
       type="button"
       aria-label={soundOn ? "Mute runway music" : "Play runway music"}
       aria-pressed={soundOn}
-      title={soundOn ? "Music on — click to mute" : "Music off — click to play"}
+      title={soundOn ? "Music on - click to mute" : "Music off - click to play"}
       onClick={onToggle}
       whileTap={{ scale: 0.88 }}
       whileHover={{ scale: 1.08 }}
@@ -44,7 +44,7 @@ export default function MusicToggle({ soundOn, onToggle, className = "" }: Music
       style={{ backdropFilter: "blur(4px)" }}
     >
       {soundOn ? (
-        /* Musical note — sound ON */
+        /* Musical note - sound ON */
         <svg
           width="16"
           height="16"

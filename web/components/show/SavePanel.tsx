@@ -8,7 +8,7 @@ import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMo
 
 const DEMO_USER_ID = 1;
 
-/** Bright camera-flash overlay (explicit white — independent of theme vars). */
+/** Bright camera-flash overlay (explicit white - independent of theme vars). */
 function CameraFlash({ onDone }: { onDone: () => void }) {
   return (
     <>
@@ -97,7 +97,7 @@ export default function SavePanel({
           </span>
           <div>
             <p className="text-sm font-medium text-[#f4ecd8]" style={{ fontFamily: "var(--font-body-var), serif" }}>
-              Look saved — &ldquo;{savedName}&rdquo;
+              Look saved - &ldquo;{savedName}&rdquo;
             </p>
             <p className="text-xs text-[#f4ecd8]/60" style={{ fontFamily: "var(--font-body-var), serif" }}>
               {pieceCount} piece{pieceCount !== 1 ? "s" : ""}

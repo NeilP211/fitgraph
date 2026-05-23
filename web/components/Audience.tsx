@@ -6,7 +6,7 @@ import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMo
 
 // ---------------------------------------------------------------------------
 // Audience figure SVG variants
-// 5 distinct silhouette "archetypes" — head + shoulders + torso shapes
+// 5 distinct silhouette "archetypes" - head + shoulders + torso shapes
 // All drawn in a 40×72 viewBox so we can scale them uniformly.
 // ---------------------------------------------------------------------------
 
@@ -66,7 +66,7 @@ function FigureSilhouette({ variant }: { variant: FigureVariant }) {
 }
 
 // ---------------------------------------------------------------------------
-// Sparkle burst — rendered above a figure on cheer
+// Sparkle burst - rendered above a figure on cheer
 // ---------------------------------------------------------------------------
 
 function SparkleBurst({ id }: { id: string }) {
@@ -152,7 +152,7 @@ function makeConfigs(count: number): FigureConfig[] {
 }
 
 // ---------------------------------------------------------------------------
-// Idle sway — CSS keyframes injected once
+// Idle sway - CSS keyframes injected once
 // ---------------------------------------------------------------------------
 
 const IDLE_STYLE_ID = "audience-idle-keyframes";
@@ -177,7 +177,7 @@ function ensureIdleKeyframes() {
 }
 
 // ---------------------------------------------------------------------------
-// Single audience figure — handles its own cheer state
+// Single audience figure - handles its own cheer state
 // ---------------------------------------------------------------------------
 
 interface AudienceFigureProps {
@@ -262,7 +262,7 @@ function AudienceFigure({ config, index, reduced, onCheer }: AudienceFigureProps
           display: "block",
           transformOrigin: "bottom center",
         }}
-        aria-label="Audience member — click to cheer"
+        aria-label="Audience member - click to cheer"
         title="Click to cheer"
         variants={cheerVariants}
         animate={cheering ? "cheer" : "idle"}

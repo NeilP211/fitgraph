@@ -6,7 +6,7 @@ import { imageUrl } from "@/lib/api";
 import { usePrefersReducedMotion } from "@/components/motion/usePrefersReducedMotion";
 
 // ---------------------------------------------------------------------------
-// Slot configuration — pure helpers live in lib/slots (React-free); re-exported
+// Slot configuration - pure helpers live in lib/slots (React-free); re-exported
 // here so existing imports (`@/components/StageFigure`) keep working.
 // ---------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@ export { CENTER_SLOTS, SIDE_SLOTS, categoryToSlot } from "@/lib/slots";
 export type { CenterSlot, SideSlot, SlotName } from "@/lib/slots";
 
 // ---------------------------------------------------------------------------
-// Slot visual configuration — controls size and offset of each body part
+// Slot visual configuration - controls size and offset of each body part
 // ---------------------------------------------------------------------------
 
 interface SlotConfig {
@@ -52,7 +52,7 @@ const CENTER_SLOT_CONFIG: Record<CenterSlot, SlotConfig> = {
     heightPct: 26,
     objectFit: "contain",
     zIndex: 5,
-    widthFactor: 1.05, // slightly wider — layered behind top
+    widthFactor: 1.05, // slightly wider - layered behind top
   },
   tops: {
     label: "Top",
@@ -154,7 +154,7 @@ function SlotPlaceholder({ label }: { label: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Individual slot cell — shows either a garment image or a placeholder
+// Individual slot cell - shows either a garment image or a placeholder
 // ---------------------------------------------------------------------------
 
 interface SlotCellProps {
@@ -189,7 +189,7 @@ function SlotCell({ slot, item, heightPx, widthPx, reduced, hidden }: SlotCellPr
         flexShrink: 0,
       }}
       role="region"
-      aria-label={`${label} slot${item ? `: ${item.title || item.item_id}` : " — empty"}`}
+      aria-label={`${label} slot${item ? `: ${item.title || item.item_id}` : " - empty"}`}
     >
       <div
         style={{
@@ -355,7 +355,7 @@ export default function StageFigure({ figureHeight = 480, items }: StageFigurePr
   const FIGURE_HEIGHT = figureHeight;
   const figureWidthPx = Math.round(FIGURE_HEIGHT * 0.45); // ~45% of height
 
-  // Slot heights as px — proportional percentages of figure height
+  // Slot heights as px - proportional percentages of figure height
   // When all-body present: tops slot hidden, bottoms slot hidden, all-body gets their combined height
   const slotHeights: Record<CenterSlot, number> = {
     hats: Math.round(FIGURE_HEIGHT * 0.1),
@@ -394,7 +394,7 @@ export default function StageFigure({ figureHeight = 480, items }: StageFigurePr
     <div
       className="relative flex items-start justify-center gap-2"
       style={{ height: FIGURE_HEIGHT }}
-      aria-label="Outfit figure — selected pieces stacked as a look"
+      aria-label="Outfit figure - selected pieces stacked as a look"
     >
       {/* Left side floats (bags) */}
       <div

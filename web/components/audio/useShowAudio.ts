@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * useShowAudio — audio for "The Show"
+ * useShowAudio - audio for "The Show"
  *
  * Synthesised entirely via the Web Audio API (no binary asset files), so there
  * are no licensing concerns and it works offline.
  *
  * Design:
  *  - Single "sound on/off" toggle, persisted to localStorage (key: fitgraph_audio).
- *  - ON by default — but autoplay-safe: nothing plays until the first user
+ *  - ON by default - but autoplay-safe: nothing plays until the first user
  *    gesture (call arm()); only OFF if the user explicitly toggled it off.
  *  - When ON:  an upbeat runway groove loops + a crowd cheer plays on demand.
  *  - When OFF: both are silenced.
  *  - SSR-safe: all Web Audio / localStorage access is guarded behind typeof checks.
  *
- * Runway groove: a glossy four-on-the-floor house loop (~122 BPM) — kick,
+ * Runway groove: a glossy four-on-the-floor house loop (~122 BPM) - kick,
  *                offbeat hats, a filtered saw bass, and a bright triangle
- *                arpeggio — scheduled with a small lookahead clock.
+ *                arpeggio - scheduled with a small lookahead clock.
  *
- * Crowd cheer:   a layered burst — a vocal "roar" swell (band-passed noise)
+ * Crowd cheer:   a layered burst - a vocal "roar" swell (band-passed noise)
  *                + dozens of short clap transients (dense then thinning) + a
  *                couple of whistles. Sounds like a real crowd, not a single pop.
  */
@@ -28,7 +28,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 const STORAGE_KEY = "fitgraph_audio";
 
 // ---------------------------------------------------------------------------
-// Runway groove — an upbeat looping house/electro bed (no assets)
+// Runway groove - an upbeat looping house/electro bed (no assets)
 // ---------------------------------------------------------------------------
 
 function createRunwayGroove(ctx: AudioContext): { stop: () => void } {
@@ -37,7 +37,7 @@ function createRunwayGroove(ctx: AudioContext): { stop: () => void } {
   master.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.2); // fade in
   master.connect(ctx.destination);
 
-  // Gentle glue bus — open enough to stay bright (not muddy/ominous)
+  // Gentle glue bus - open enough to stay bright (not muddy/ominous)
   const bus = ctx.createBiquadFilter();
   bus.type = "lowpass";
   bus.frequency.value = 3400;
@@ -154,7 +154,7 @@ function createRunwayGroove(ctx: AudioContext): { stop: () => void } {
 }
 
 // ---------------------------------------------------------------------------
-// Crowd cheer — layered roar + claps + whistles (one-shot)
+// Crowd cheer - layered roar + claps + whistles (one-shot)
 // ---------------------------------------------------------------------------
 
 function playCrowdCheer(ctx: AudioContext): void {
@@ -163,7 +163,7 @@ function playCrowdCheer(ctx: AudioContext): void {
   out.gain.value = 0.9;
   out.connect(ctx.destination);
 
-  // 1) Vocal roar — band-passed noise that swells and falls
+  // 1) Vocal roar - band-passed noise that swells and falls
   const roarDur = 1.6;
   const rbuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * roarDur), ctx.sampleRate);
   const rd = rbuf.getChannelData(0);
@@ -185,7 +185,7 @@ function playCrowdCheer(ctx: AudioContext): void {
   rsrc.start(t0);
   rsrc.stop(t0 + roarDur);
 
-  // 2) Claps — many short transients, dense at first then thinning out
+  // 2) Claps - many short transients, dense at first then thinning out
   const clapCount = 36;
   for (let i = 0; i < clapCount; i++) {
     const t = t0 + Math.pow(Math.random(), 0.6) * 1.2 + Math.random() * 0.02;
@@ -249,7 +249,7 @@ interface ShowAudioState {
   /**
    * Arm audio on the first user gesture: resumes the AudioContext and starts
    * the runway groove if sound is ON. No-op when sound is OFF. Browser
-   * autoplay-safe — must be called from within a user-gesture handler.
+   * autoplay-safe - must be called from within a user-gesture handler.
    */
   arm: () => void;
 }
@@ -258,7 +258,7 @@ export function useShowAudio(): ShowAudioState {
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     try {
-      // Default ON — only off if the user explicitly turned it off.
+      // Default ON - only off if the user explicitly turned it off.
       return localStorage.getItem(STORAGE_KEY) !== "off";
     } catch {
       return true;
@@ -289,7 +289,7 @@ export function useShowAudio(): ShowAudioState {
     return ctxRef.current;
   }, []);
 
-  /** Start the runway groove loop. Idempotent — won't double-start. */
+  /** Start the runway groove loop. Idempotent - won't double-start. */
   const startGroove = useCallback(() => {
     if (grooveStopRef.current) return;
     const ctx = getCtx();
@@ -312,7 +312,7 @@ export function useShowAudio(): ShowAudioState {
       try {
         localStorage.setItem(STORAGE_KEY, next ? "on" : "off");
       } catch {
-        // localStorage unavailable — ignore
+        // localStorage unavailable - ignore
       }
       if (next) {
         startGroove();

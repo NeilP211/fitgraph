@@ -12,7 +12,7 @@ import type { StageFigureItem } from "@/components/StageFigure";
 import { useShowAudio } from "@/components/audio/useShowAudio";
 
 /**
- * The Show — the dark-theater outfit builder. The user picks a slot from the
+ * The Show - the dark-theater outfit builder. The user picks a slot from the
  * bottom dock, gets one suggestion at a time (✗ to cycle next-best, ✓ to place
  * it on the lit figure), and the crowd roars on accept and on click.
  */
@@ -106,7 +106,7 @@ export default function TheShow({ itemId }: { itemId: string }) {
       <Stage items={figureItems} onCheer={roar} />
 
       {/*
-        Foreground control zone — pinned just above the dock so the stage stays
+        Foreground control zone - pinned just above the dock so the stage stays
         uncluttered. Shows the active suggestion, else a compact save bar once
         pieces exist, else nothing.
       */}

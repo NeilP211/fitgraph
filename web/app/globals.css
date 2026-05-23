@@ -197,3 +197,30 @@ html {
     animation-delay: 0s !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   The Show — dark theater
+   Scoped CSS-variable overrides so reused components (StageFigure, Audience),
+   which reference --ink / --rule / --gold / etc., automatically adapt to the
+   dark stage with no prop plumbing (Tailwind v4 @theme inline references vars).
+   ───────────────────────────────────────────────────────────────────────────── */
+body.theater-dark { background: #0a0a0b; }
+
+.theater-spotlight {
+  --paper:       #0a0a0b;
+  --surface:     #15151a;
+  --ink:         #f4ecd8;
+  --ink-soft:    #b9ad8e;
+  --rule:        #4a4636;
+  --gold:        #d4af6e;
+  --accent:      #d4af6e;
+  --accent-deep: #e6c486;
+  background:
+    radial-gradient(58% 52% at 50% 20%,
+      rgba(212, 175, 110, 0.22) 0%,
+      rgba(212, 175, 110, 0.06) 36%,
+      transparent 70%),
+    #0a0a0b;
+}
+
+.theater-vignette { box-shadow: inset 0 0 240px 80px rgba(0, 0, 0, 0.92); }

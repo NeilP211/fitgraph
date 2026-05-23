@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import OutfitBuilder from "@/components/OutfitBuilder";
+import TheShow from "@/components/show/TheShow";
 
 export default function BuildPage({
   params,
@@ -9,5 +9,5 @@ export default function BuildPage({
   params: Promise<{ itemId: string }>;
 }) {
   const { itemId } = use(params);
-  return <OutfitBuilder itemId={decodeURIComponent(itemId)} />;
+  return <TheShow itemId={decodeURIComponent(itemId)} />;
 }

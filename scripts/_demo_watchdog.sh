@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# _demo_watchdog.sh — memory-pressure seatbelt for the FitGraph demo.
+# _demo_watchdog.sh. memory-pressure seatbelt for the FitGraph demo.
 #
 # Polls the macOS kernel memory-pressure level and swap usage. If the machine
 # starts to genuinely struggle, it gracefully stops the demo BEFORE the UI can
@@ -38,7 +38,7 @@ while true; do
   if [[ "$swap" -gt "$SWAP_LIMIT_MB" ]]; then danger=1; reason="swap usage ${swap} MB"; fi
 
   if [[ "$danger" == 1 ]]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') WATCHDOG TRIPPED: $reason — stopping demo to prevent a freeze"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') WATCHDOG TRIPPED: $reason. stopping demo to prevent a freeze"
     osascript -e "display notification \"$reason. Demo stopped to prevent a freeze.\" with title \"FitGraph watchdog\"" 2>/dev/null || true
     bash "$ROOT/scripts/demo_down.sh" --from-watchdog || true
     exit 0

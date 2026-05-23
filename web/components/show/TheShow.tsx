@@ -97,10 +97,10 @@ export default function TheShow({ itemId }: { itemId: string }) {
   return (
     <TheaterScene soundOn={soundOn} onToggleSound={toggleMusic}>
       <h1
-        className="text-xl uppercase tracking-[0.24em] text-[#d4af6e]"
+        className="mt-[7vh] text-xl uppercase tracking-[0.24em] text-[#d4af6e]"
         style={{ fontFamily: "var(--font-display-var), serif" }}
       >
-        The Show
+        Catwalk
       </h1>
 
       <Stage items={figureItems} onCheer={roar} />

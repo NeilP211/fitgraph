@@ -33,7 +33,7 @@ export default function TheaterScene({
         className="fixed left-4 top-4 z-20 text-[11px] uppercase tracking-[0.18em] text-[#f4ecd8]/70 transition-colors hover:text-[#f4ecd8]"
         style={{ fontFamily: "var(--font-display-var), serif" }}
       >
-        ← Leave the runway
+        ← Leave the catwalk
       </Link>
 
       <div className="fixed right-4 top-4 z-20">

@@ -288,62 +288,41 @@ export interface AudienceProps {
   onCheer?: () => void;
   /** Additional CSS class for the wrapper */
   className?: string;
-  /** How many figures to render for the "row" layout (default 14). */
+  /** How many figures to render (default 14 for "row", 32 for "bank"). */
   count?: number;
-  /** "row" = a single crowd row; "sea" = a deep, packed crowd of many rows. */
-  layout?: "row" | "sea";
+  /** "row" = a single crowd row; "bank" = a dense crowd block filling its box. */
+  layout?: "row" | "bank";
 }
 
-/** Rows for the "sea" layout: back (small, dim) → front (large, bright). */
-const SEA_ROWS = [
-  { n: 16, scale: 0.5, opacity: 0.26 },
-  { n: 15, scale: 0.64, opacity: 0.4 },
-  { n: 14, scale: 0.78, opacity: 0.56 },
-  { n: 13, scale: 0.9, opacity: 0.72 },
-  { n: 12, scale: 1.0, opacity: 0.86 },
-];
-
-export default function Audience({ onCheer, className, count = 14, layout = "row" }: AudienceProps) {
+export default function Audience({ onCheer, className, count, layout = "row" }: AudienceProps) {
   const reduced = usePrefersReducedMotion();
 
-  // A deep "sea" of overlapping rows that recede with perspective.
-  if (layout === "sea") {
-    const total = SEA_ROWS.reduce((a, r) => a + r.n, 0);
-    const all = makeConfigs(total);
-    let idx = 0;
+  // A dense crowd block that fills its container (used to flank the runway).
+  // Figures pack bottom-up and the top fades into the dark for depth.
+  if (layout === "bank") {
+    const figures = makeConfigs(count ?? 32);
     return (
-      <div className={`relative w-full overflow-hidden ${className ?? ""}`} aria-label="Audience" role="group">
-        <div className="flex flex-col items-stretch">
-          {SEA_ROWS.map((r, ri) => {
-            const figs = all.slice(idx, idx + r.n);
-            idx += r.n;
-            return (
-              <div
-                key={ri}
-                className="flex items-end justify-center"
-                style={{
-                  transform: `scale(${r.scale})`,
-                  transformOrigin: "bottom center",
-                  opacity: r.opacity,
-                  marginTop: ri === 0 ? 0 : -14,
-                  marginLeft: ri % 2 ? 24 : 0,
-                  zIndex: ri,
-                }}
-              >
-                {figs.map((cfg, i) => (
-                  <div key={i} style={{ marginLeft: -3 }}>
-                    <AudienceFigure config={cfg} index={i} reduced={reduced} onCheer={onCheer} />
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+      <div
+        className={`relative h-full w-full overflow-hidden ${className ?? ""}`}
+        aria-label="Audience"
+        role="group"
+        style={{
+          WebkitMaskImage: "linear-gradient(to top, black 46%, transparent 100%)",
+          maskImage: "linear-gradient(to top, black 46%, transparent 100%)",
+        }}
+      >
+        <div className="flex h-full flex-wrap content-end items-end justify-center gap-y-1">
+          {figures.map((cfg, i) => (
+            <div key={i} style={{ marginLeft: -2, marginRight: -2 }}>
+              <AudienceFigure config={cfg} index={i} reduced={reduced} onCheer={onCheer} />
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
-  const figures = makeConfigs(count);
+  const figures = makeConfigs(count ?? 14);
   return (
     <div className={`relative ${className ?? ""}`} aria-label="Audience" role="group">
       <div className="flex flex-wrap items-end justify-center gap-x-0.5 gap-y-1 px-2">

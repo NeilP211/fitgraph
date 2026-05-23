@@ -27,9 +27,12 @@ export default function Stage({
         </div>
       </div>
 
-      {/* Sea of people — a deep, packed crowd across the full-width foreground */}
-      <div className="fixed inset-x-0 bottom-14 z-[6]">
-        <Audience layout="sea" onCheer={onCheer} />
+      {/* Crowd banks flanking the runway — fill the side space, surround the catwalk */}
+      <div className="fixed left-0 top-[12%] bottom-16 z-[6] hidden w-[32vw] max-w-[460px] md:block">
+        <Audience layout="bank" count={52} onCheer={onCheer} />
+      </div>
+      <div className="fixed right-0 top-[12%] bottom-16 z-[6] hidden w-[32vw] max-w-[460px] md:block">
+        <Audience layout="bank" count={52} onCheer={onCheer} />
       </div>
     </div>
   );

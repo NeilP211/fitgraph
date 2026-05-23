@@ -66,6 +66,8 @@ class CatalogItemOut(BaseModel):
     title: str | None
     semantic_category: str | None
     image_path: str | None
+    color: str | None = None
+    brand: str | None = None
 
 
 class CatalogItemsResponse(BaseModel):
@@ -73,6 +75,17 @@ class CatalogItemsResponse(BaseModel):
     limit: int
     offset: int
     items: list[CatalogItemOut]
+
+
+class FacetValue(BaseModel):
+    value: str
+    count: int
+
+
+class CatalogFacetsResponse(BaseModel):
+    category: str
+    colors: list[FacetValue]
+    brands: list[FacetValue]
 
 
 # ---------------------------------------------------------------------------

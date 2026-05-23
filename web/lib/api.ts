@@ -92,6 +92,8 @@ export interface CatalogItem {
   title: string | null;
   semantic_category: string | null;
   image_path: string | null;
+  color?: string | null;
+  brand?: string | null;
 }
 
 export interface CatalogItemsResponse {
@@ -104,10 +106,40 @@ export interface CatalogItemsResponse {
 export async function getCatalogItems(
   category: string,
   limit = 24,
-  offset = 0
+  offset = 0,
+  color?: string | null,
+  brand?: string | null
 ): Promise<CatalogItemsResponse> {
-  return apiFetch<CatalogItemsResponse>(
-    `/catalog/items?category=${encodeURIComponent(category)}&limit=${limit}&offset=${offset}`
+  const params = new URLSearchParams({
+    category,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  if (color) params.set("color", color);
+  if (brand) params.set("brand", brand);
+  return apiFetch<CatalogItemsResponse>(`/catalog/items?${params.toString()}`);
+}
+
+// ---------------------------------------------------------------------------
+// /catalog/facets
+// ---------------------------------------------------------------------------
+
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+export interface CatalogFacetsResponse {
+  category: string;
+  colors: FacetValue[];
+  brands: FacetValue[];
+}
+
+export async function getCatalogFacets(
+  category: string
+): Promise<CatalogFacetsResponse> {
+  return apiFetch<CatalogFacetsResponse>(
+    `/catalog/facets?category=${encodeURIComponent(category)}`
   );
 }
 

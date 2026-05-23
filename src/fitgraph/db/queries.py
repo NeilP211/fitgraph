@@ -78,17 +78,48 @@ def list_categories(session: Session) -> list[dict]:
 
 
 def list_items_by_category(
-    session: Session, category: str, limit: int = 24, offset: int = 0
+    session: Session,
+    category: str,
+    limit: int = 24,
+    offset: int = 0,
+    color: str | None = None,
+    brand: str | None = None,
 ) -> list[Item]:
-    """Items in a category, stable-ordered by id, paginated."""
-    return (
-        session.query(Item)
-        .filter(Item.semantic_category == category)
-        .order_by(Item.id)
-        .limit(limit)
-        .offset(offset)
+    """Items in a category, stable-ordered by id, paginated, optionally filtered
+    by dominant color and/or brand."""
+    q = session.query(Item).filter(Item.semantic_category == category)
+    if color:
+        q = q.filter(Item.color == color)
+    if brand:
+        q = q.filter(Item.brand == brand)
+    return q.order_by(Item.id).limit(limit).offset(offset).all()
+
+
+def catalog_facets(session: Session, category: str, top_brands: int = 24) -> dict:
+    """Available color + brand filter values (with counts) for a category."""
+    colors = (
+        session.query(Item.color, func.count(Item.id))
+        .filter(Item.semantic_category == category, Item.color.isnot(None))
+        .group_by(Item.color)
+        .order_by(func.count(Item.id).desc())
         .all()
     )
+    brands = (
+        session.query(Item.brand, func.count(Item.id))
+        .filter(
+            Item.semantic_category == category,
+            Item.brand.isnot(None),
+            Item.brand != "",
+        )
+        .group_by(Item.brand)
+        .order_by(func.count(Item.id).desc())
+        .limit(top_brands)
+        .all()
+    )
+    return {
+        "colors": [{"value": c, "count": int(n)} for c, n in colors],
+        "brands": [{"value": b, "count": int(n)} for b, n in brands],
+    }
 
 
 def rating_volume_since(session: Session, model_version: str) -> int:

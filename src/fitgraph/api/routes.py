@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 from fitgraph.api.schemas import (
     CatalogItem,
     CatalogItemOut,
+    CatalogFacetsResponse,
     CatalogItemsResponse,
     CatalogSearchResponse,
+    FacetValue,
     CategoryCount,
     CategoryListResponse,
     CompatibilityRequest,
@@ -36,6 +38,7 @@ from fitgraph.api.schemas import (
 from fitgraph.api.serving import ModelService, get_model_service
 from fitgraph.db.models import Item, ItemEmbedding, Outfit, OutfitItem, Rating
 from fitgraph.db.queries import (
+    catalog_facets,
     list_categories,
     list_items_by_category,
     search_items_by_tag,
@@ -296,9 +299,13 @@ def catalog_items(
     category: str = Query(..., description="Semantic category to browse"),
     limit: int = Query(default=24, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    color: str | None = Query(default=None, description="Filter by dominant color"),
+    brand: str | None = Query(default=None, description="Filter by brand"),
 ) -> CatalogItemsResponse:
-    """Return paginated items for a given semantic category."""
-    items: list[Item] = list_items_by_category(db, category, limit=limit, offset=offset)
+    """Return paginated items for a category, optionally filtered by color/brand."""
+    items: list[Item] = list_items_by_category(
+        db, category, limit=limit, offset=offset, color=color, brand=brand
+    )
     return CatalogItemsResponse(
         category=category,
         limit=limit,
@@ -309,9 +316,25 @@ def catalog_items(
                 title=it.title,
                 semantic_category=it.semantic_category,
                 image_path=it.image_path,
+                color=it.color,
+                brand=it.brand,
             )
             for it in items
         ],
+    )
+
+
+@router.get("/catalog/facets", response_model=CatalogFacetsResponse)
+def catalog_facets_endpoint(
+    db: DBSession,
+    category: str = Query(..., description="Semantic category"),
+) -> CatalogFacetsResponse:
+    """Available color + brand filter values (with counts) for a category."""
+    facets = catalog_facets(db, category)
+    return CatalogFacetsResponse(
+        category=category,
+        colors=[FacetValue(**c) for c in facets["colors"]],
+        brands=[FacetValue(**b) for b in facets["brands"]],
     )
 
 

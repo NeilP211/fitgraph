@@ -35,6 +35,8 @@ class Item(Base):
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     search_doc: Mapped[str | None] = mapped_column(TSVECTOR)
     image_path: Mapped[str | None] = mapped_column(Text)
+    color: Mapped[str | None] = mapped_column(Text, default=None)
+    brand: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime | None] = mapped_column(default=None)
 
     embedding: Mapped[ItemEmbedding | None] = relationship(

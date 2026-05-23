@@ -19,10 +19,14 @@ CREATE TABLE IF NOT EXISTS items (
     tags              text[],
     search_doc        tsvector,
     image_path        text,
+    color             text,
+    brand             text,
     created_at        timestamptz DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS items_search_doc_gin ON items USING GIN (search_doc);
+CREATE INDEX IF NOT EXISTS items_color_idx ON items (semantic_category, color);
+CREATE INDEX IF NOT EXISTS items_brand_idx ON items (semantic_category, brand);
 
 -- -------------------------------------------------------- item_embeddings ---
 CREATE TABLE IF NOT EXISTS item_embeddings (

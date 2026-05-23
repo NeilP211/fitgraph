@@ -44,7 +44,7 @@ export default function SpotlightSuggestion({
   return (
     <div className="flex flex-col items-center gap-4" aria-live="polite">
       <span
-        className="text-[11px] uppercase tracking-[0.2em] text-[#d4af6e]"
+        className="text-[11px] uppercase tracking-[0.2em] text-[#EFE7D4]"
         style={{ fontFamily: "var(--font-display-var), serif" }}
       >
         {label(slot)} · {match}% match
@@ -88,7 +88,7 @@ export default function SpotlightSuggestion({
         <button
           onClick={onAccept}
           aria-label={`Accept this ${label(slot)}`}
-          className="h-14 w-14 rounded-full bg-[#d4af6e] text-2xl text-[#0a0a0b] transition-colors hover:bg-[#e6c486]"
+          className="h-14 w-14 rounded-full bg-[#EFE7D4] text-2xl text-[#0a0a0b] transition-colors hover:bg-[#FBF6E9]"
         >
           ✓
         </button>

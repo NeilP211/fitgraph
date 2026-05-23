@@ -29,9 +29,9 @@ const italianno = Italianno({
 });
 
 export const metadata: Metadata = {
-  title: "FitGraph — AI Outfit Stylist",
+  title: "Runway · AI Outfit Stylist",
   description:
-    "Upload a garment and let our graph neural network find perfectly compatible pieces from our catalog.",
+    "Pick a seed garment and let a graph neural network compose a complete, type-aware outfit from the catalog.",
 };
 
 export default function RootLayout({

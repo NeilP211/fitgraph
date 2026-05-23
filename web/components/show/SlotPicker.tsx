@@ -38,7 +38,7 @@ export default function SlotPicker({
               className={[
                 "rounded-full border px-4 py-1.5 text-[11px] uppercase tracking-[0.14em] transition-colors",
                 active
-                  ? "border-[#d4af6e] text-[#d4af6e]"
+                  ? "border-[#EFE7D4] text-[#EFE7D4]"
                   : filled
                     ? "border-[#f4ecd8]/40 text-[#f4ecd8]/90"
                     : "border-[#f4ecd8]/20 text-[#f4ecd8]/60 hover:text-[#f4ecd8]",

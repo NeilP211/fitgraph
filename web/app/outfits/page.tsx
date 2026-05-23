@@ -20,7 +20,7 @@ function Hanger() {
       height="16"
       viewBox="0 0 22 16"
       fill="none"
-      stroke="var(--gold)"
+      stroke="#EFE7D4"
       strokeWidth="1.4"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -206,14 +206,14 @@ function ClosetInteriorModal({
           className="closet-modal-interior max-h-[86vh] overflow-y-auto p-6"
           style={{
             background:
-              "radial-gradient(140% 80% at 50% -10%, rgba(212,175,110,0.20), transparent 60%), linear-gradient(180deg, #2a2118 0%, #382c20 100%)",
+              "radial-gradient(140% 80% at 50% -10%, rgba(239,231,212,0.16), transparent 60%), linear-gradient(180deg, #161310 0%, #211c16 100%)",
           }}
         >
           {/* Header on the interior back-panel */}
           <div className="flex items-start justify-between gap-4">
             <div>
               <p
-                className="text-[10px] uppercase tracking-[0.22em] text-gold"
+                className="text-[10px] uppercase tracking-[0.22em] text-[#EFE7D4]"
                 style={{ fontFamily: "var(--font-display-var), serif" }}
               >
                 {lookLabel}
@@ -236,7 +236,7 @@ function ClosetInteriorModal({
                 type="button"
                 onClick={onDelete}
                 aria-label="Delete this look"
-                className="flex items-center gap-1.5 rounded-sm border border-gold/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-paper/80 hover:bg-accent hover:text-paper hover:border-accent transition-colors"
+                className="flex items-center gap-1.5 rounded-sm border border-[#EFE7D4]/40 px-3 py-1.5 text-[10px] uppercase tracking-[0.12em] text-paper/80 transition-colors hover:border-[#EFE7D4] hover:text-paper"
                 style={{ fontFamily: "var(--font-body-var), serif" }}
               >
                 <svg
@@ -272,7 +272,7 @@ function ClosetInteriorModal({
 
           {/* Hanging rail */}
           <div className="relative mt-6 mb-2">
-            <div className="h-0.5 w-full rounded-full bg-gradient-to-r from-transparent via-gold to-transparent" />
+            <div className="h-0.5 w-full rounded-full bg-gradient-to-r from-transparent via-[#EFE7D4]/70 to-transparent" />
           </div>
 
           {/* Garments on hangers */}
@@ -284,7 +284,7 @@ function ClosetInteriorModal({
                 className="group flex flex-col items-center"
               >
                 <Hanger />
-                <div className="group relative block aspect-[3/4] w-full overflow-hidden rounded-sm border border-gold/30 bg-paper shadow-lg transition-transform duration-300 group-hover:-translate-y-0.5">
+                <div className="group relative block aspect-[3/4] w-full overflow-hidden rounded-sm border border-[#EFE7D4]/30 bg-paper shadow-lg transition-transform duration-300 group-hover:-translate-y-0.5">
                   <Image
                     src={imageUrl(id)}
                     alt={`Item ${id}`}
@@ -394,31 +394,23 @@ export default function OutfitsPage() {
         <FashionBand text="WARDROBE" top="30%" />
 
         <section className="relative z-10 mx-auto max-w-6xl px-6 pt-10 pb-16">
-          {/* Page header */}
-          <div className="hr-rule mb-6" />
+          {/* Page header: centered title with a + to start a new outfit */}
           <Reveal>
-            <div className="mb-8 flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h1
-                  className="text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
-                  style={{ fontFamily: "var(--font-display-var), serif" }}
-                >
-                  Your Wardrobe
-                </h1>
-                <p
-                  className="mt-2 text-base text-ink-soft"
-                  style={{ fontFamily: "var(--font-body-var), serif" }}
-                >
-                  Every saved look, hung in its own closet. Open one to see the
-                  pieces.
-                </p>
-              </div>
+            <div className="relative mb-8 pt-2">
+              <h1
+                className="text-center text-3xl font-semibold uppercase tracking-[0.12em] text-ink"
+                style={{ fontFamily: "var(--font-display-var), serif" }}
+              >
+                Your Wardrobe
+              </h1>
               <Link
                 href="/"
-                className="rounded-sm bg-accent px-5 py-2.5 text-xs uppercase tracking-[0.12em] text-paper hover:bg-accent-deep transition-colors"
+                aria-label="New outfit"
+                title="New outfit"
+                className="absolute right-0 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-accent text-2xl leading-none text-paper transition-colors hover:bg-accent-deep"
                 style={{ fontFamily: "var(--font-body-var), serif" }}
               >
-                New Outfit
+                +
               </Link>
             </div>
           </Reveal>

@@ -24,7 +24,7 @@ function CameraFlash({ onDone }: { onDone: () => void }) {
           animate={{ scale: 1.5, opacity: [0, 1, 0] }}
           transition={{ duration: 0.3, ease: "easeOut" }}
           className="select-none text-4xl"
-          style={{ filter: "drop-shadow(0 0 8px #d4af6e)" }}
+          style={{ filter: "drop-shadow(0 0 8px #EFE7D4)" }}
         >
           ✦
         </motion.div>
@@ -92,7 +92,7 @@ export default function SavePanel({
         className="flex items-center justify-between gap-4 rounded-sm border border-[#f4ecd8]/15 bg-black/40 px-5 py-3"
       >
         <div className="flex items-center gap-3">
-          <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-[#d4af6e]/40 bg-[#d4af6e]/15 text-sm font-bold text-[#d4af6e]">
+          <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-[#EFE7D4]/40 bg-[#EFE7D4]/15 text-sm font-bold text-[#EFE7D4]">
             ✓
           </span>
           <div>
@@ -106,7 +106,7 @@ export default function SavePanel({
         </div>
         <Link
           href="/outfits"
-          className="rounded-sm bg-[#d4af6e] px-4 py-1.5 text-xs uppercase tracking-[0.12em] text-[#0a0a0b] transition-colors hover:bg-[#e6c486]"
+          className="rounded-sm bg-[#EFE7D4] px-4 py-1.5 text-xs uppercase tracking-[0.12em] text-[#0a0a0b] transition-colors hover:bg-[#FBF6E9]"
           style={{ fontFamily: "var(--font-body-var), serif" }}
         >
           View Outfits
@@ -126,7 +126,7 @@ export default function SavePanel({
             onChange={(e) => setName(e.target.value)}
             placeholder="Name this look…"
             aria-label="Outfit name"
-            className="w-full rounded-sm border border-[#f4ecd8]/20 bg-black/30 px-3 py-2 text-sm text-[#f4ecd8] placeholder:text-[#f4ecd8]/40 focus:border-[#d4af6e] focus:outline-none focus:ring-1 focus:ring-[#d4af6e]/40"
+            className="w-full rounded-sm border border-[#f4ecd8]/20 bg-black/30 px-3 py-2 text-sm text-[#f4ecd8] placeholder:text-[#f4ecd8]/40 focus:border-[#EFE7D4] focus:outline-none focus:ring-1 focus:ring-[#EFE7D4]/40"
             style={{ fontFamily: "var(--font-body-var), serif" }}
           />
           {error && (
@@ -138,7 +138,7 @@ export default function SavePanel({
         <button
           type="submit"
           disabled={!name.trim() || saving || selectedIds.length === 0}
-          className="flex-shrink-0 whitespace-nowrap rounded-sm bg-[#d4af6e] px-5 py-2 text-xs uppercase tracking-[0.12em] text-[#0a0a0b] transition-colors hover:bg-[#e6c486] disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-shrink-0 whitespace-nowrap rounded-sm bg-[#EFE7D4] px-5 py-2 text-xs uppercase tracking-[0.12em] text-[#0a0a0b] transition-colors hover:bg-[#FBF6E9] disabled:cursor-not-allowed disabled:opacity-50"
           style={{ fontFamily: "var(--font-body-var), serif" }}
         >
           {saving ? "Saving…" : "Save the Look"}

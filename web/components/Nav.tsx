@@ -24,7 +24,7 @@ export default function Nav() {
             className="font-display font-semibold text-xl uppercase tracking-[0.18em] text-ink group-hover:text-accent transition-colors"
             style={{ fontFamily: "var(--font-display-var), serif" }}
           >
-            FITGRAPH
+            RUNWAY
           </span>
           <span className="hidden sm:block text-[9px] font-body uppercase tracking-[0.2em] text-ink-soft leading-tight">
             The<br />Catalog

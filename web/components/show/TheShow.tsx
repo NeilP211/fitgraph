@@ -97,7 +97,7 @@ export default function TheShow({ itemId }: { itemId: string }) {
   return (
     <TheaterScene soundOn={soundOn} onToggleSound={toggleMusic}>
       <h1
-        className="mt-[7vh] text-xl uppercase tracking-[0.24em] text-[#d4af6e]"
+        className="mt-[7vh] text-xl uppercase tracking-[0.24em] text-[#EFE7D4]"
         style={{ fontFamily: "var(--font-display-var), serif" }}
       >
         Catwalk

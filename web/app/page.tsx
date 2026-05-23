@@ -58,8 +58,8 @@ export default function HomePage() {
                 className="max-w-lg text-base text-ink-soft leading-relaxed"
                 style={{ fontFamily: "var(--font-body-var), serif" }}
               >
-                Choose a seed garment and let our graph neural network compose a
-                complete, type-aware ensemble around it.
+                Choose a seed garment and let my graph neural network suggest
+                outfit ideas.
               </p>
             </Reveal>
           </div>

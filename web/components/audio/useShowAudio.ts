@@ -1,25 +1,26 @@
 "use client";
 
 /**
- * useShowAudio — Phase 3 of "The Show"
+ * useShowAudio — audio for "The Show"
  *
- * Audio is synthesised entirely via the Web Audio API (no binary asset files).
- * This avoids all licensing concerns and works offline.
+ * Synthesised entirely via the Web Audio API (no binary asset files), so there
+ * are no licensing concerns and it works offline.
  *
  * Design:
  *  - Single "sound on/off" toggle, persisted to localStorage (key: fitgraph_audio).
  *  - ON by default — but autoplay-safe: nothing plays until the first user
  *    gesture (call arm()); only OFF if the user explicitly toggled it off.
- *  - When ON:  ambient runway pad loops + cheers play on demand.
+ *  - When ON:  an upbeat runway groove loops + a crowd cheer plays on demand.
  *  - When OFF: both are silenced.
  *  - SSR-safe: all Web Audio / localStorage access is guarded behind typeof checks.
  *
- * Ambient pad:  3 detuned sine oscillators (root + 5th + octave) fed through a
- *               low-pass filter and a slow (4 s) amplitude LFO, giving a gentle
- *               breathing lounge-music feel.
+ * Runway groove: a glossy four-on-the-floor house loop (~122 BPM) — kick,
+ *                offbeat hats, a filtered saw bass, and a bright triangle
+ *                arpeggio — scheduled with a small lookahead clock.
  *
- * Applause SFX: a filtered white-noise burst with a fast attack and smooth
- *               exponential decay (~0.9 s total), imitating a small crowd cheer.
+ * Crowd cheer:   a layered burst — a vocal "roar" swell (band-passed noise)
+ *                + dozens of short clap transients (dense then thinning) + a
+ *                couple of whistles. Sounds like a real crowd, not a single pop.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -27,124 +28,211 @@ import { useEffect, useRef, useState, useCallback } from "react";
 const STORAGE_KEY = "fitgraph_audio";
 
 // ---------------------------------------------------------------------------
-// Helpers — pure Web Audio synthesis (no fetch / no binary assets)
+// Runway groove — an upbeat looping house/electro bed (no assets)
 // ---------------------------------------------------------------------------
 
-/** Create the ambient pad node graph. Returns { gainNode, stop }. */
-function createAmbientPad(ctx: AudioContext): { masterGain: GainNode; stop: () => void } {
-  const masterGain = ctx.createGain();
-  masterGain.gain.setValueAtTime(0.0, ctx.currentTime);
-  masterGain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 2.0); // fade in
-  masterGain.connect(ctx.destination);
+function createRunwayGroove(ctx: AudioContext): { stop: () => void } {
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+  master.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 1.2); // fade in
+  master.connect(ctx.destination);
 
-  // Low-pass filter for warmth
-  const filter = ctx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(800, ctx.currentTime);
-  filter.Q.setValueAtTime(0.8, ctx.currentTime);
-  filter.connect(masterGain);
+  // Gentle glue bus — open enough to stay bright (not muddy/ominous)
+  const bus = ctx.createBiquadFilter();
+  bus.type = "lowpass";
+  bus.frequency.value = 3400;
+  bus.connect(master);
 
-  // Slow amplitude LFO (breathing, 0.25 Hz ≈ 4 s cycle)
-  const lfo = ctx.createOscillator();
-  const lfoGain = ctx.createGain();
-  lfo.type = "sine";
-  lfo.frequency.setValueAtTime(0.22, ctx.currentTime);
-  lfoGain.gain.setValueAtTime(0.04, ctx.currentTime);
-  lfo.connect(lfoGain);
-  lfoGain.connect(masterGain.gain);
-  lfo.start();
+  const bpm = 122;
+  const beat = 60 / bpm;
+  const stepDur = beat / 2; // 8th notes → 8 steps per bar
+  let nextTime = ctx.currentTime + 0.1;
+  let step = 0;
 
-  // Root note — A2 (110 Hz), detune +0
-  const osc0 = ctx.createOscillator();
-  const g0 = ctx.createGain();
-  osc0.type = "sine";
-  osc0.frequency.setValueAtTime(110, ctx.currentTime);
-  g0.gain.setValueAtTime(0.55, ctx.currentTime);
-  osc0.connect(g0);
-  g0.connect(filter);
-  osc0.start();
+  // Bright vamp (A minor-ish, high octave) + a simple moving bassline
+  const arp = [440, 523.25, 659.25, 783.99, 659.25, 523.25, 587.33, 659.25];
+  const bassByBar = [55, 65.41, 49.0, 73.42]; // A1 C2 G1 D2
 
-  // Perfect fifth — E3 (165 Hz), detune +3 cents
-  const osc1 = ctx.createOscillator();
-  const g1 = ctx.createGain();
-  osc1.type = "sine";
-  osc1.frequency.setValueAtTime(165, ctx.currentTime);
-  osc1.detune.setValueAtTime(3, ctx.currentTime);
-  g1.gain.setValueAtTime(0.30, ctx.currentTime);
-  osc1.connect(g1);
-  g1.connect(filter);
-  osc1.start();
-
-  // Octave — A3 (220 Hz), detune -5 cents (gives subtle beating)
-  const osc2 = ctx.createOscillator();
-  const g2 = ctx.createGain();
-  osc2.type = "sine";
-  osc2.frequency.setValueAtTime(220, ctx.currentTime);
-  osc2.detune.setValueAtTime(-5, ctx.currentTime);
-  g2.gain.setValueAtTime(0.18, ctx.currentTime);
-  osc2.connect(g2);
-  g2.connect(filter);
-  osc2.start();
-
-  // Sub harmonic hint — A1 (55 Hz) very soft
-  const osc3 = ctx.createOscillator();
-  const g3 = ctx.createGain();
-  osc3.type = "sine";
-  osc3.frequency.setValueAtTime(55, ctx.currentTime);
-  g3.gain.setValueAtTime(0.10, ctx.currentTime);
-  osc3.connect(g3);
-  g3.connect(filter);
-  osc3.start();
-
-  const stop = () => {
-    const t = ctx.currentTime;
-    masterGain.gain.linearRampToValueAtTime(0, t + 0.4); // short fade-out
-    setTimeout(() => {
-      try {
-        osc0.stop(); osc1.stop(); osc2.stop(); osc3.stop(); lfo.stop();
-      } catch {
-        // already stopped / context closed — ignore
-      }
-    }, 450);
+  const kick = (t: number) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.11);
+    g.gain.setValueAtTime(0.8, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g);
+    g.connect(bus);
+    o.start(t);
+    o.stop(t + 0.2);
   };
 
-  return { masterGain, stop };
+  const hat = (t: number, open: boolean) => {
+    const dur = open ? 0.11 : 0.035;
+    const buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(open ? 0.12 : 0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(bus);
+    src.start(t);
+    src.stop(t + dur);
+  };
+
+  const bass = (t: number, freq: number) => {
+    const o = ctx.createOscillator();
+    const lp = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    o.type = "sawtooth";
+    o.frequency.value = freq;
+    lp.type = "lowpass";
+    lp.frequency.value = 700;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.26, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + beat * 0.85);
+    o.connect(lp);
+    lp.connect(g);
+    g.connect(bus);
+    o.start(t);
+    o.stop(t + beat);
+  };
+
+  const pluck = (t: number, freq: number) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "triangle";
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.14, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o.connect(g);
+    g.connect(bus);
+    o.start(t);
+    o.stop(t + 0.25);
+  };
+
+  const timer = setInterval(() => {
+    while (nextTime < ctx.currentTime + 0.12) {
+      const t = nextTime;
+      const s = step % 8;
+      const bar = Math.floor(step / 8);
+      if (s % 2 === 0) {
+        kick(t); // four-on-the-floor
+        bass(t, bassByBar[bar % bassByBar.length]);
+      }
+      hat(t, s % 2 === 1); // open hats on the offbeats
+      pluck(t, arp[step % arp.length]);
+      nextTime += stepDur;
+      step++;
+    }
+  }, 25);
+
+  const stop = () => {
+    clearInterval(timer);
+    const t = ctx.currentTime;
+    master.gain.cancelScheduledValues(t);
+    master.gain.setValueAtTime(master.gain.value, t);
+    master.gain.linearRampToValueAtTime(0, t + 0.3);
+    setTimeout(() => {
+      try {
+        master.disconnect();
+      } catch {
+        // already disconnected
+      }
+    }, 400);
+  };
+
+  return { stop };
 }
 
-/** Play a one-shot applause/cheer SFX burst (filtered white noise, ~0.9 s). */
-function playApplauseSFX(ctx: AudioContext): void {
-  const duration = 0.9;
-  const bufferSize = Math.floor(ctx.sampleRate * duration);
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
+// ---------------------------------------------------------------------------
+// Crowd cheer — layered roar + claps + whistles (one-shot)
+// ---------------------------------------------------------------------------
 
-  // White noise
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+function playCrowdCheer(ctx: AudioContext): void {
+  const t0 = ctx.currentTime;
+  const out = ctx.createGain();
+  out.gain.value = 0.9;
+  out.connect(ctx.destination);
+
+  // 1) Vocal roar — band-passed noise that swells and falls
+  const roarDur = 1.6;
+  const rbuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * roarDur), ctx.sampleRate);
+  const rd = rbuf.getChannelData(0);
+  for (let i = 0; i < rd.length; i++) rd[i] = Math.random() * 2 - 1;
+  const rsrc = ctx.createBufferSource();
+  rsrc.buffer = rbuf;
+  const rbp = ctx.createBiquadFilter();
+  rbp.type = "bandpass";
+  rbp.frequency.value = 900;
+  rbp.Q.value = 0.5;
+  const rg = ctx.createGain();
+  rg.gain.setValueAtTime(0.0001, t0);
+  rg.gain.linearRampToValueAtTime(0.5, t0 + 0.18);
+  rg.gain.linearRampToValueAtTime(0.4, t0 + 0.75);
+  rg.gain.exponentialRampToValueAtTime(0.001, t0 + roarDur);
+  rsrc.connect(rbp);
+  rbp.connect(rg);
+  rg.connect(out);
+  rsrc.start(t0);
+  rsrc.stop(t0 + roarDur);
+
+  // 2) Claps — many short transients, dense at first then thinning out
+  const clapCount = 36;
+  for (let i = 0; i < clapCount; i++) {
+    const t = t0 + Math.pow(Math.random(), 0.6) * 1.2 + Math.random() * 0.02;
+    const dur = 0.03;
+    const cbuf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * dur)), ctx.sampleRate);
+    const cd = cbuf.getChannelData(0);
+    for (let j = 0; j < cd.length; j++) cd[j] = (Math.random() * 2 - 1) * (1 - j / cd.length);
+    const csrc = ctx.createBufferSource();
+    csrc.buffer = cbuf;
+    const chp = ctx.createBiquadFilter();
+    chp.type = "highpass";
+    chp.frequency.value = 1500 + Math.random() * 1600;
+    const cg = ctx.createGain();
+    cg.gain.value = 0.1 + Math.random() * 0.1;
+    csrc.connect(chp);
+    chp.connect(cg);
+    cg.connect(out);
+    csrc.start(t);
+    csrc.stop(t + dur);
   }
 
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
+  // 3) A couple of whistles rising over the top
+  for (let i = 0; i < 2; i++) {
+    const t = t0 + 0.2 + Math.random() * 0.5;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    const f = 1800 + Math.random() * 700;
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.linearRampToValueAtTime(f + 320, t + 0.15);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+    o.connect(g);
+    g.connect(out);
+    o.start(t);
+    o.stop(t + 0.4);
+  }
 
-  // Band-pass filter: crowd applause lives ~1 kHz–4 kHz
-  const bp = ctx.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.setValueAtTime(2200, ctx.currentTime);
-  bp.Q.setValueAtTime(0.7, ctx.currentTime);
-
-  // Gain envelope — fast attack, smooth exponential decay
-  const gain = ctx.createGain();
-  const t0 = ctx.currentTime;
-  gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(0.55, t0 + 0.04);   // 40 ms attack
-  gain.gain.setValueAtTime(0.55, t0 + 0.04);
-  gain.gain.exponentialRampToValueAtTime(0.001, t0 + duration);
-
-  source.connect(bp);
-  bp.connect(gain);
-  gain.connect(ctx.destination);
-  source.start(t0);
-  source.stop(t0 + duration);
+  // Tidy up the temp bus shortly after the cheer ends
+  setTimeout(() => {
+    try {
+      out.disconnect();
+    } catch {
+      // already disconnected
+    }
+  }, (roarDur + 0.3) * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -154,20 +242,19 @@ function playApplauseSFX(ctx: AudioContext): void {
 interface ShowAudioState {
   /** Whether sound is currently enabled (ON). */
   soundOn: boolean;
-  /** Toggle sound on/off. Starts or stops the ambient pad; persists choice. */
+  /** Toggle sound on/off. Starts or stops the runway groove; persists choice. */
   toggleMusic: () => void;
-  /** Play the cheer SFX if sound is ON. Safe to call unconditionally. */
+  /** Play the crowd cheer if sound is ON. Safe to call unconditionally. */
   playCheer: () => void;
   /**
    * Arm audio on the first user gesture: resumes the AudioContext and starts
-   * the ambient pad if sound is ON. No-op when sound is OFF. Browser
+   * the runway groove if sound is ON. No-op when sound is OFF. Browser
    * autoplay-safe — must be called from within a user-gesture handler.
    */
   arm: () => void;
 }
 
 export function useShowAudio(): ShowAudioState {
-  // Read initial persisted value (default: OFF)
   const [soundOn, setSoundOn] = useState<boolean>(() => {
     if (typeof window === "undefined") return true;
     try {
@@ -178,16 +265,10 @@ export function useShowAudio(): ShowAudioState {
     }
   });
 
-  // Refs — stable across renders; created lazily on first user gesture.
-  // NOTE: soundOn state drives rendering; we keep a separate ref only for
-  // callbacks that need the latest value without being re-created on every
-  // render. We sync it inside useEffect (not during render) to satisfy the
-  // react-hooks/refs rule.
   const ctxRef = useRef<AudioContext | null>(null);
-  const padStopRef = useRef<(() => void) | null>(null);
+  const grooveStopRef = useRef<(() => void) | null>(null);
   const soundOnRef = useRef(soundOn);
 
-  // Keep soundOnRef in sync with state — runs after render, never during.
   useEffect(() => {
     soundOnRef.current = soundOn;
   }, [soundOn]);
@@ -202,83 +283,69 @@ export function useShowAudio(): ShowAudioState {
         return null;
       }
     }
-    // Resume if suspended (needed after autoplay policy suspends it)
     if (ctxRef.current.state === "suspended") {
       void ctxRef.current.resume();
     }
     return ctxRef.current;
   }, []);
 
-  /** Start the ambient pad loop. Idempotent — won't double-start. */
-  const startPad = useCallback(() => {
-    if (padStopRef.current) return; // already running
+  /** Start the runway groove loop. Idempotent — won't double-start. */
+  const startGroove = useCallback(() => {
+    if (grooveStopRef.current) return;
     const ctx = getCtx();
     if (!ctx) return;
-    const { stop } = createAmbientPad(ctx);
-    padStopRef.current = stop;
+    const { stop } = createRunwayGroove(ctx);
+    grooveStopRef.current = stop;
   }, [getCtx]);
 
-  /** Stop the ambient pad. Idempotent. */
-  const stopPad = useCallback(() => {
-    if (!padStopRef.current) return;
-    padStopRef.current();
-    padStopRef.current = null;
+  /** Stop the runway groove. Idempotent. */
+  const stopGroove = useCallback(() => {
+    if (!grooveStopRef.current) return;
+    grooveStopRef.current();
+    grooveStopRef.current = null;
   }, []);
 
   const toggleMusic = useCallback(() => {
-    // We use a functional updater so we don't need soundOn in the dep array.
     setSoundOn((prev) => {
       const next = !prev;
-      soundOnRef.current = next; // safe: called inside setState updater (not render)
-
-      // Persist
+      soundOnRef.current = next;
       try {
         localStorage.setItem(STORAGE_KEY, next ? "on" : "off");
       } catch {
         // localStorage unavailable — ignore
       }
-
       if (next) {
-        // startPad is stable (no closure over soundOn); call directly.
-        startPad();
+        startGroove();
       } else {
-        stopPad();
+        stopGroove();
       }
-
       return next;
     });
-  }, [startPad, stopPad]);
+  }, [startGroove, stopGroove]);
 
   const playCheer = useCallback(() => {
     if (!soundOnRef.current) return;
     const ctx = getCtx();
     if (!ctx) return;
-    playApplauseSFX(ctx);
+    playCrowdCheer(ctx);
   }, [getCtx]);
 
-  /** Arm audio on first user gesture: resume ctx + start the pad if ON. */
   const arm = useCallback(() => {
     if (!soundOnRef.current) return;
-    getCtx();   // creates + resumes the AudioContext (needs a user gesture)
-    startPad(); // idempotent — won't double-start
-  }, [getCtx, startPad]);
+    getCtx(); // creates + resumes the AudioContext (needs a user gesture)
+    startGroove(); // idempotent
+  }, [getCtx, startGroove]);
 
-  // If page is reloaded with soundOn=true from localStorage, auto-start pad
-  // ONLY after a user gesture has resumed the AudioContext.
-  // We do NOT start on mount — we wait for the first toggleMusic or playCheer.
-  // This ensures we never violate the browser autoplay policy.
-
-  // Clean up pad on unmount
+  // Clean up on unmount
   useEffect(() => {
     return () => {
-      stopPad();
-      // Close the AudioContext to free OS resources
+      stopGroove();
       if (ctxRef.current && ctxRef.current.state !== "closed") {
         void ctxRef.current.close();
         ctxRef.current = null;
       }
     };
-  }, [stopPad]);
+  }, [stopGroove]);
 
   return { soundOn, toggleMusic, playCheer, arm };
 }

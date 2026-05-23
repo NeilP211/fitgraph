@@ -27,17 +27,9 @@ export default function Stage({
         </div>
       </div>
 
-      {/* Front crowd — closest, largest, in the foreground */}
-      <div className="relative z-10 mt-1 w-full">
-        <Audience layout="row" count={30} onCheer={onCheer} />
-      </div>
-
-      {/* Side flanks — anchored to the theater edges, in the shadows */}
-      <div className="fixed left-1 top-[22%] z-[5] hidden lg:block">
-        <Audience layout="column" count={9} onCheer={onCheer} />
-      </div>
-      <div className="fixed right-1 top-[22%] z-[5] hidden lg:block">
-        <Audience layout="column" count={9} onCheer={onCheer} />
+      {/* Sea of people — a deep, packed crowd across the full-width foreground */}
+      <div className="fixed inset-x-0 bottom-14 z-[6]">
+        <Audience layout="sea" onCheer={onCheer} />
       </div>
     </div>
   );

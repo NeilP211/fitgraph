@@ -288,26 +288,65 @@ export interface AudienceProps {
   onCheer?: () => void;
   /** Additional CSS class for the wrapper */
   className?: string;
-  /** How many figures to render (default 14). */
+  /** How many figures to render for the "row" layout (default 14). */
   count?: number;
-  /** "row" = crowd row (front); "column" = side flank. */
-  layout?: "row" | "column";
+  /** "row" = a single crowd row; "sea" = a deep, packed crowd of many rows. */
+  layout?: "row" | "sea";
 }
+
+/** Rows for the "sea" layout: back (small, dim) → front (large, bright). */
+const SEA_ROWS = [
+  { n: 16, scale: 0.5, opacity: 0.26 },
+  { n: 15, scale: 0.64, opacity: 0.4 },
+  { n: 14, scale: 0.78, opacity: 0.56 },
+  { n: 13, scale: 0.9, opacity: 0.72 },
+  { n: 12, scale: 1.0, opacity: 0.86 },
+];
 
 export default function Audience({ onCheer, className, count = 14, layout = "row" }: AudienceProps) {
   const reduced = usePrefersReducedMotion();
-  const figures = makeConfigs(count);
-  const isColumn = layout === "column";
 
+  // A deep "sea" of overlapping rows that recede with perspective.
+  if (layout === "sea") {
+    const total = SEA_ROWS.reduce((a, r) => a + r.n, 0);
+    const all = makeConfigs(total);
+    let idx = 0;
+    return (
+      <div className={`relative w-full overflow-hidden ${className ?? ""}`} aria-label="Audience" role="group">
+        <div className="flex flex-col items-stretch">
+          {SEA_ROWS.map((r, ri) => {
+            const figs = all.slice(idx, idx + r.n);
+            idx += r.n;
+            return (
+              <div
+                key={ri}
+                className="flex items-end justify-center"
+                style={{
+                  transform: `scale(${r.scale})`,
+                  transformOrigin: "bottom center",
+                  opacity: r.opacity,
+                  marginTop: ri === 0 ? 0 : -14,
+                  marginLeft: ri % 2 ? 24 : 0,
+                  zIndex: ri,
+                }}
+              >
+                {figs.map((cfg, i) => (
+                  <div key={i} style={{ marginLeft: -3 }}>
+                    <AudienceFigure config={cfg} index={i} reduced={reduced} onCheer={onCheer} />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const figures = makeConfigs(count);
   return (
     <div className={`relative ${className ?? ""}`} aria-label="Audience" role="group">
-      <div
-        className={
-          isColumn
-            ? "flex flex-col items-center gap-1"
-            : "flex flex-wrap items-end justify-center gap-x-0.5 gap-y-1 px-2"
-        }
-      >
+      <div className="flex flex-wrap items-end justify-center gap-x-0.5 gap-y-1 px-2">
         {figures.map((cfg, i) => (
           <div key={i} style={{ marginTop: cfg.yOffset < 0 ? Math.abs(cfg.yOffset) : 0 }}>
             <AudienceFigure config={cfg} index={i} reduced={reduced} onCheer={onCheer} />

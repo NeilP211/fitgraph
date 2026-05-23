@@ -8,20 +8,20 @@
 # demo_up.sh; not meant to be run directly.
 #
 # Trip conditions (any one):
-#   - kernel pressure CRITICAL (level 4)        -> immediate stop
-#   - kernel pressure WARNING (level 2) for ~12s -> stop
-#   - swap used > 4096 MB                        -> stop
-# These are tuned to ignore brief, harmless spikes but catch a real slide
-# toward a freeze. To disable the seatbelt, just don't run demo_up.sh's
-# watchdog (or `kill $(cat .demo/watchdog.pid)`).
+#   - kernel pressure CRITICAL (level 4) sustained ~9s -> stop
+#   - swap used > 7168 MB                              -> stop
+# Deliberately relaxed: the demo serves a production build (~1 GB) that does not
+# balloon, so routine WARNING pressure from other apps (Chrome, etc.) is left
+# alone. Only a genuine slide toward a hang trips it. To disable the seatbelt,
+# run `kill $(cat .demo/watchdog.pid)`.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN="$ROOT/.demo"
-WARN_STREAK=0
+CRIT_STREAK=0
 POLL=3
-WARN_STREAK_LIMIT=4   # 4 * 3s = ~12s sustained warning
-SWAP_LIMIT_MB=4096
+CRIT_STREAK_LIMIT=3   # 3 * 3s = ~9s sustained CRITICAL pressure
+SWAP_LIMIT_MB=7168
 
 trap 'rm -f "$RUN/watchdog.pid"' EXIT
 
@@ -32,9 +32,8 @@ while true; do
   swap="${swap%.*}"; swap="${swap:-0}"
 
   danger=0; reason=""
-  if [[ "$level" -ge 4 ]]; then danger=1; reason="kernel memory pressure CRITICAL"; fi
-  if [[ "$level" -ge 2 ]]; then WARN_STREAK=$((WARN_STREAK + 1)); else WARN_STREAK=0; fi
-  if [[ "$WARN_STREAK" -ge "$WARN_STREAK_LIMIT" ]]; then danger=1; reason="sustained memory-pressure warning (~$((WARN_STREAK*POLL))s)"; fi
+  if [[ "$level" -ge 4 ]]; then CRIT_STREAK=$((CRIT_STREAK + 1)); else CRIT_STREAK=0; fi
+  if [[ "$CRIT_STREAK" -ge "$CRIT_STREAK_LIMIT" ]]; then danger=1; reason="sustained CRITICAL memory pressure (~$((CRIT_STREAK*POLL))s)"; fi
   if [[ "$swap" -gt "$SWAP_LIMIT_MB" ]]; then danger=1; reason="swap usage ${swap} MB"; fi
 
   if [[ "$danger" == 1 ]]; then

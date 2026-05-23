@@ -1,8 +1,29 @@
-# FitGraph
+# Runway
 
-**Outfit compatibility via graph neural networks** — most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). FitGraph learns *compatibility*: what actually goes together in an outfit, by training on how garments are co-worn across 35,140 real Polyvore outfits. It then serves those learned embeddings through a full-stack product — browse a categorized catalog, pick a seed garment, get compatible items grouped by category, assemble & save an outfit — backed by a live retrain loop.
+**An AI stylist that learns what actually goes together.** Most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). Runway learns *compatibility*: what genuinely belongs in the same outfit, by training a graph neural network on how garments are co-worn across 35,140 real Polyvore outfits. Those learned embeddings drive a full-stack product: search and browse a 72k-item catalog, filter by color and brand, then step onto a dark **Catwalk** where you assemble a head-to-toe look one piece at a time, the model proposes matches, and a crowd cheers you on.
 
-![FitGraph — browse a categorized catalog, pick a seed garment, get compatible suggestions grouped by category](docs/assets/screenshot.png)
+![Runway demo](docs/assets/demo.gif)
+
+> The clip is also available full-resolution at [`docs/assets/demo.mp4`](docs/assets/demo.mp4).
+
+---
+
+## A look around
+
+| Browse the catalog | Search |
+|---|---|
+| ![Browse the catalog](docs/assets/01-browse.png) | ![Search the catalog](docs/assets/02-search.png) |
+| Cream + black editorial catalog of 72k garments, by category. | Full-text search across the catalog. |
+
+| Filter by color + brand | The Catwalk |
+|---|---|
+| ![Color and brand filters](docs/assets/03-color-brand-filter.png) | ![The Catwalk builder](docs/assets/04-catwalk.png) |
+| Real colors extracted from every product image; brands parsed from titles. | A darkened theatre: pick a slot, get one suggestion at a time, accept or reject, and the crowd roars. |
+
+| Your Wardrobe | A saved look |
+|---|---|
+| ![Your wardrobe](docs/assets/05-wardrobe.png) | ![A saved look](docs/assets/06-wardrobe-look.png) |
+| Saved outfits, each hung in its own closet. | Open a closet to see every piece; tap one to restyle around it. |
 
 ---
 
@@ -16,19 +37,19 @@ Evaluated **inductively** and **leakage-free** on the full Polyvore Outfits disj
 | Fill-in-the-blank accuracy | **0.623** | 15,145 questions |
 | Recall@10 | 0.0043 | |
 | Recall@30 | 0.0095 | Ranking one held-out item against all 152,785 catalog items |
-| Recall@50 | 0.0161 | ~13–49× random baseline |
+| Recall@50 | 0.0161 | ~13 to 49x random baseline |
 | API latency (P99) | ~2 ms | Compatibility/retrieval path, measured locally |
-| Test suite | 202 passing | pytest + ruff clean |
+| Test suite | 226 passing | pytest + ruff clean, plus vitest on the frontend reducer |
 
-**Dataset:** Polyvore Outfits (`disjoint` split) — 152,785 items embedded, 35,140 outfits (train 16,995 / valid 3,000 / test 15,145).
+**Dataset:** Polyvore Outfits (`disjoint` split): 152,785 items embedded, 35,140 outfits (train 16,995 / valid 3,000 / test 15,145).
 
-### The leakage fix — an honest account
+### The leakage fix, an honest account
 
-An early evaluation ran the HGAT `forward` pass over a graph that included test-split outfits. Test garments were embedded via message-passing that incorporated test co-occurrence signal — the very signal the model was supposed to predict. This produced an inflated AUC of ~**0.99**.
+An early evaluation ran the HGAT `forward` pass over a graph that included test-split outfits. Test garments were embedded via message-passing that incorporated test co-occurrence signal, the very signal the model was supposed to predict. This produced an inflated AUC of ~**0.99**.
 
 The fix was to switch to strict **inductive** evaluation: all test embeddings are produced via `model.embed_features(x)`, which runs only the MLP encoder on image+text features with no graph context. This is exactly how the deployed product embeds every catalog garment it scores at serve time. The reported **0.848** is the honest number.
 
-The gap between 0.99 and 0.848 is not a failure — it is a demonstration of ML rigor. Finding and fixing this kind of leakage is what separates a polished portfolio from a toy benchmark.
+The gap between 0.99 and 0.848 is not a failure, it is a demonstration of ML rigor. Finding and fixing this kind of leakage is what separates a polished portfolio from a toy benchmark.
 
 ---
 
@@ -50,20 +71,20 @@ Top-5 compatible suggestions for three query garments, ranked by type-aware cosi
 Polyvore Outfits (Kaggle API)
         │
         ▼
-  data/polyvore.py          Parse JSON → Item / Outfit dataclasses
+  data/polyvore.py          Parse JSON to Item / Outfit dataclasses
   data/splits.py            Outfit-disjoint train / val / test
         │
         ▼
   embeddings/
-    clip_encoder.py         open_clip ViT-B/32 → 512-d image vector
-    text_encoder.py         sentence-transformers MiniLM-L6-v2 → 384-d
-    fusion.py               Concat + L2-norm → 896-d fused vector
+    clip_encoder.py         open_clip ViT-B/32 to 512-d image vector
+    text_encoder.py         sentence-transformers MiniLM-L6-v2 to 384-d
+    fusion.py               Concat + L2-norm to 896-d fused vector
         │
         ▼
   graph/builder.py          PyG HeteroData bipartite graph
                             garment nodes (x = 896-d fused embeddings)
                             outfit nodes  (x = zeros, learned via GAT)
-                            edges: garment ↔ outfit
+                            edges: garment to/from outfit
         │
         ▼
   training/
@@ -78,20 +99,21 @@ Polyvore Outfits (Kaggle API)
   │                                                 │
   ▼                                                 ▼
 scripts/seed_catalog.py                   models/hgat.py embed_features(x)
-Export 256-d embeddings → pgvector        Inductive path: MLP encoder only,
+Export 256-d embeddings to pgvector       Inductive path: MLP encoder only,
 IVFFlat cosine index                      no graph needed at serve time
         │                                           │
         └──────────────────────┬────────────────────┘
                                │
                                ▼
                     FastAPI (api/)
-                    GET  /catalog/categories  List all semantic categories with counts
-                    GET  /catalog/items       Paginated items by category
+                    GET  /catalog/categories  Semantic categories with counts
+                    GET  /catalog/items       Paginated items, filter by color/brand
+                    GET  /catalog/facets      Available colors + brands per category
+                    GET  /catalog/search      Full-text catalog search (tsvector)
                     GET  /items/{id}/outfit-suggestions  Grouped per-category suggestions
                     POST /compatibility  TypeAwareScorer in 67 type-pair subspaces
-                    POST /feedback      Publish rating → Redis Stream
+                    POST /feedback      Publish rating to Redis Stream
                     POST /outfits       Save outfit history
-                    GET  /catalog/search Full-text search on tags
                                │
                     ┌──────────┴──────────┐
                     │                     │
@@ -101,27 +123,27 @@ IVFFlat cosine index                      no graph needed at serve time
                                         │
                                         ▼
                                feedback/stream.py
-                               Batch consumer → Postgres ratings
+                               Batch consumer to Postgres ratings
                                feedback/trigger.py
-                               should_retrain() → scripts/retrain.py
+                               should_retrain() to scripts/retrain.py
                                (versioned retrain when threshold crossed)
                                │
                                ▼
                     Next.js frontend (web/)
-                    Browse catalog · Category nav · Outfit builder · Save outfit · Rate
+                    Browse + search + color/brand filters · The Catwalk builder · Wardrobe
 ```
 
 See [`docs/architecture.md`](docs/architecture.md) for deep coverage of model internals, training details, the leakage fix, database schema, Redis Streams design, and the deferred AWS architecture.
 
 ---
 
-## Model — v7 HGAT
+## Model: v7 HGAT
 
 **Type-aware Heterogeneous Graph Attention Network.**
 
-- **Encoder:** deep nonlinear MLP over fused 896-d features → `Linear(896→512) → LayerNorm → GELU → Dropout → Linear(512→256) → LayerNorm → GELU → Dropout`. Hidden dim 256.
+- **Encoder:** deep nonlinear MLP over fused 896-d features: `Linear(896→512) → LayerNorm → GELU → Dropout → Linear(512→256) → LayerNorm → GELU → Dropout`. Hidden dim 256.
 - **GAT layers:** 2 stacked `HeteroConv` layers, each with separate `GATConv` modules for both edge directions (`garment→outfit`, `outfit→garment`). 4 attention heads, mean-aggregation, residual connections.
-- **Inductive cold-start:** `embed_features(x)` = `L2_norm(encoder(x))`. Identical to `forward` for an isolated node — zero representation gap for cold-start garments scored at serve time.
+- **Inductive cold-start:** `embed_features(x)` = `L2_norm(encoder(x))`. Identical to `forward` for an isolated node, zero representation gap for cold-start garments scored at serve time.
 - **Type-aware subspaces:** 67 learned per-type-pair subspaces (66 from Polyvore `typespaces.p` + 1 fallback) via non-negative masks over shared embeddings, following Vasileva et al. 2018. Compatible items of complementary types score highly even when visually dissimilar.
 - **Training:** InfoNCE contrastive loss, CLIP-mined hard negatives (visually similar but not co-worn), bounded shared negative pool (256 items), mini-batch subgraph training, neighbor dropout (p=0.1), 25 epochs on Apple Silicon MPS.
 
@@ -134,14 +156,17 @@ See [`docs/architecture.md`](docs/architecture.md) for deep coverage of model in
 | GNN | PyTorch, PyTorch Geometric |
 | Vision encoder | open_clip (ViT-B/32) |
 | Text encoder | sentence-transformers (MiniLM-L6-v2) |
+| Color extraction | Pillow + NumPy (HSV palette classification over product images) |
 | Inference API | FastAPI, uvicorn |
 | Vector search | Postgres + pgvector (IVFFlat cosine index) |
 | Feedback loop | Redis Streams (XADD / XREADGROUP / XACK) |
 | ORM / queries | SQLAlchemy 2, psycopg3 |
-| Frontend | Next.js 16, TypeScript, Tailwind CSS |
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind v4, Framer Motion |
 | Local infra | Docker Compose (pgvector:pg16, redis:7-alpine) |
 | CI | GitHub Actions (pytest + ruff) |
 | Packaging | pyproject.toml, setuptools |
+
+The Python package is `fitgraph` (the project's working name); the product is branded **Runway**.
 
 ---
 
@@ -176,8 +201,8 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
   --embeddings data/models/<v>/catalog_embeddings.npz \
   --model-version <v>
 
-# 8. Start the FastAPI backend (pick a free port, e.g. 8011)
-.venv/bin/uvicorn fitgraph.api.main:create_app --factory --port 8011
+# 8. Extract a dominant color + brand per item (powers the catalog filters)
+.venv/bin/python scripts/extract_facets.py
 
 # 9. Point the frontend at the API and install deps
 echo "NEXT_PUBLIC_API_URL=http://localhost:8011" > web/.env.local
@@ -186,21 +211,16 @@ cd web && npm install && cd ..
 
 ### Running the app
 
-**Recommended (and required on 16 GB Macs) — one command, production build:**
+**Recommended (and required on 16 GB Macs), one command, production build:**
 
 ```bash
 scripts/demo_up.sh     # Docker + API (:8011) + prod web (:3012) + memory watchdog
 scripts/demo_down.sh   # stop everything
 ```
 
-> ⚠️ **Do not use `npm run dev` on a 16 GB Mac.** Next.js 16's Turbopack compiles
-> the homepage route on-demand the first time a browser loads it, and that
-> dev-mode compile balloons system memory to **~8 GB in seconds** — enough to
-> thrash swap and hard-freeze the machine (a forced power-button reboot). The
-> production build (`next build` + `next start`, what `demo_up.sh` runs) serves
-> the same page in **~1 GB**. `demo_up.sh` also starts a memory-pressure watchdog
-> that stops the stack gracefully before the OS can hang. If you have ≥32 GB and
-> want hot-reload, `cd web && npm run dev` is fine.
+Then open **http://localhost:3012**.
+
+> Note for 16 GB Macs: prefer `scripts/demo_up.sh` (a production build) over `npm run dev`. Next.js 16's Turbopack compiles the homepage route on demand the first time a browser loads it, and that dev-mode compile can balloon system memory to ~8 GB in seconds, enough to thrash swap and hard-freeze the machine. The production build serves the same page in ~1 GB, and `demo_up.sh` runs a memory-pressure watchdog seatbelt. On a machine with 32 GB or more, `cd web && npm run dev` is fine.
 
 The default config trains on a 5,000-outfit subset so an end-to-end run completes quickly on a laptop. Add `--full` to steps 4 and 5 to reproduce the published 0.848 AUC (35k outfits, 152k items, ~25 epochs on Apple Silicon MPS).
 
@@ -209,34 +229,36 @@ The default config trains on a 5,000-outfit subset so an end-to-end run complete
 ## Project structure
 
 ```
-fitgraph/
+runway/  (package: fitgraph)
 ├── src/fitgraph/
-│   ├── config.py           Central config — paths, hyperparameters, env-driven
+│   ├── config.py           Central config: paths, hyperparameters, env-driven
 │   ├── data/               Polyvore parsing, dataclasses, outfit-disjoint splits
 │   ├── embeddings/         CLIP image encoder, sentence-transformer text encoder, fusion
-│   ├── graph/              Bipartite HeteroData builder (garment ↔ outfit)
+│   ├── graph/              Bipartite HeteroData builder (garment to/from outfit)
 │   ├── models/
 │   │   ├── hgat.py         Heterogeneous GAT + inductive embed_features path
-│   │   └── type_aware.py   TypeAwareScorer — 67 learned type-pair subspaces
+│   │   └── type_aware.py   TypeAwareScorer: 67 learned type-pair subspaces
 │   ├── training/           InfoNCE loss, hard-negative mining, train loop, versioning
 │   ├── eval/               AUC, FITB accuracy, Recall@K, qualitative grid renderer
 │   ├── retrieval/          pgvector ANN client (cosine IVFFlat)
-│   ├── db/                 schema.sql, SQLAlchemy query layer (joins, FTS, aggregates)
+│   ├── db/                 schema.sql, SQLAlchemy query layer (joins, FTS, facets)
 │   ├── feedback/           Redis Streams producer/consumer, retrain trigger
 │   └── api/                FastAPI routes, request/response schemas, ModelService
 ├── scripts/
 │   ├── download_data.py    Kaggle API download
 │   ├── build_embeddings.py CLIP + text encoding for all catalog items
-│   ├── build_graph.py      HeteroData graph construction
 │   ├── train.py            Training entry point
 │   ├── evaluate.py         Full evaluation suite
-│   ├── seed_catalog.py     Export embeddings → pgvector
-│   └── retrain.py          Triggered retrain with feedback signal
+│   ├── seed_catalog.py     Export embeddings to pgvector
+│   ├── extract_facets.py   Dominant color (from image) + brand per item
+│   ├── retrain.py          Triggered retrain with feedback signal
+│   └── demo_up.sh          One-command production launch + memory watchdog
 ├── web/                    Next.js 16 + TypeScript + Tailwind frontend
-├── tests/                  194 tests (pytest)
+│   └── components/show/    The Catwalk: dark-theatre outfit builder
+├── tests/                  pytest suite (+ vitest for the show reducer)
 ├── docs/
 │   ├── architecture.md     Full technical reference
-│   └── assets/             grid_1.png … grid_6.png (qualitative output)
+│   └── assets/             demo.mp4/gif, screenshots, qualitative grids
 ├── docker-compose.yml      pgvector:pg16 + redis:7-alpine
 └── .github/workflows/      CI: pytest + ruff
 ```
@@ -247,7 +269,7 @@ fitgraph/
 
 User ratings flow through the system without requiring a server restart:
 
-1. Thumbs up/down in the frontend calls `POST /feedback`.
+1. Feedback in the frontend calls `POST /feedback`.
 2. The API publishes a rating event to the Redis Stream `fitgraph:feedback` via `XADD`.
 3. A batch consumer (`feedback/stream.py`, `XREADGROUP`) drains the pending-entry list, persists each as a `Rating` row in Postgres, and acknowledges with `XACK`. Malformed messages are still acknowledged to prevent infinite replay.
 4. `feedback/trigger.py::should_retrain()` checks cumulative new-rating volume against a configurable threshold.
@@ -265,13 +287,13 @@ Intended AWS deployment (designed, not wired)
   ECS Fargate           FastAPI + model container
     └─ IAM role         Least-privilege, no long-lived keys
 
-  S3 bucket             Uploaded garment images + trained model checkpoints
+  S3 bucket             Product images + trained model checkpoints
   RDS Postgres          pgvector extension for vector search
   ElastiCache Redis     Feedback stream
   CloudWatch Logs       Structured log aggregation
 
   AWS CDK (TypeScript)  Infrastructure as code
-  GitHub Actions        Post-CI: push image to ECR → update ECS service
+  GitHub Actions        Post-CI: push image to ECR, update ECS service
   Vercel                Next.js frontend deployment
 ```
 
@@ -281,4 +303,4 @@ See the full intended architecture in [`docs/architecture.md`](docs/architecture
 
 ## Resume bullet
 
-> Built FitGraph, a type-aware Heterogeneous Graph Attention Network trained with InfoNCE contrastive loss and CLIP-mined hard negatives over 35k Polyvore outfits; achieved **AUC 0.848** and **FITB 62.3%** on the full leakage-free inductive test set (caught and fixed a transductive evaluation bug that had inflated AUC to 0.99); served via a FastAPI + pgvector + Redis Streams stack with a full Next.js frontend that lets users browse a categorized catalog, pick a seed garment, get compatible items grouped by category, assemble & save an outfit, and provide feedback through an active-learning retrain loop.
+> Built Runway, a type-aware Heterogeneous Graph Attention Network trained with InfoNCE contrastive loss and CLIP-mined hard negatives over 35k Polyvore outfits; achieved **AUC 0.848** and **FITB 62.3%** on the full leakage-free inductive test set (caught and fixed a transductive evaluation bug that had inflated AUC to 0.99); served via a FastAPI + pgvector + Redis Streams stack with a Next.js frontend featuring catalog search, image-derived color and brand filters, and an animated "Catwalk" outfit builder backed by an active-learning retrain loop.

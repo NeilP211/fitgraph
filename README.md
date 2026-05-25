@@ -1,10 +1,8 @@
 # Runway
 
-**An AI stylist that learns what actually goes together.** Most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). Runway learns *compatibility*: what genuinely belongs in the same outfit, by training a graph neural network on how garments are co-worn across 35,140 real Polyvore outfits. Those learned embeddings drive a full-stack product: search and browse a 72k-item catalog, filter by color and brand, then step onto a dark **Catwalk** where you assemble a head-to-toe look one piece at a time, the model proposes matches, and a crowd cheers you on.
+**AI stylist that learns what actually goes together.** Most fashion recommenders surface *similar* items ("you liked this shirt, here's another shirt"). Runway learns *compatibility*: what goes together in the same outfit. I trained a graph neural network on how garments are co-worn across 35,140 real Polyvore outfits. Those learned embeddings search and browse a 72k-item catalog, filter by color and brand, then step onto a dark **Catwalk** where you assemble a head-to-toe look one piece at a time, the model proposes matches, and a crowd cheers you on.
 
 ![Runway demo](docs/assets/demo.gif)
-
-> The clip is also available full-resolution at [`docs/assets/demo.mp4`](docs/assets/demo.mp4).
 
 ---
 
@@ -18,7 +16,7 @@
 | Filter by color + brand | The Catwalk |
 |---|---|
 | ![Color and brand filters](docs/assets/03-color-brand-filter.png) | ![The Catwalk builder](docs/assets/04-catwalk.png) |
-| Real colors extracted from every product image; brands parsed from titles. | A darkened theatre: pick a slot, get one suggestion at a time, accept or reject, and the crowd roars. |
+| Real colors extracted from product images; brands parsed from titles. | Theatre: pick a slot, get one suggestion at a time --> accept or reject. |
 
 | Your Wardrobe | A saved look |
 |---|---|
@@ -43,13 +41,11 @@ Evaluated **inductively** and **leakage-free** on the full Polyvore Outfits disj
 
 **Dataset:** Polyvore Outfits (`disjoint` split): 152,785 items embedded, 35,140 outfits (train 16,995 / valid 3,000 / test 15,145).
 
-### The leakage fix, an honest account
+### The leakage fix
 
-An early evaluation ran the HGAT `forward` pass over a graph that included test-split outfits. Test garments were embedded via message-passing that incorporated test co-occurrence signal, the very signal the model was supposed to predict. This produced an inflated AUC of ~**0.99**.
+An early evaluation ran the HGAT `forward` pass over a graph that included test-split outfits. Test garments were embedded via message-passing that incorporated test co-occurrence signal. This produced an inflated AUC of ~**0.99**.
 
-The fix was to switch to strict **inductive** evaluation: all test embeddings are produced via `model.embed_features(x)`, which runs only the MLP encoder on image+text features with no graph context. This is exactly how the deployed product embeds every catalog garment it scores at serve time. The reported **0.848** is the honest number.
-
-The gap between 0.99 and 0.848 is not a failure, it is a demonstration of ML rigor. Finding and fixing this kind of leakage is what separates a polished portfolio from a toy benchmark.
+The fix was to switch to strict **inductive** evaluation: all test embeddings are produced via `model.embed_features(x)`, which runs only the MLP encoder on image+text features with no graph context. This is exactly how the deployed product embeds every catalog garment it scores at serve time. The reported **0.848** is the right number.
 
 ---
 
@@ -211,7 +207,7 @@ cd web && npm install && cd ..
 
 ### Running the app
 
-**Recommended (and required on 16 GB Macs), one command, production build:**
+**Recommended**
 
 ```bash
 scripts/demo_up.sh     # Docker + API (:8011) + prod web (:3012) + memory watchdog
@@ -299,8 +295,3 @@ Intended AWS deployment (designed, not wired)
 
 See the full intended architecture in [`docs/architecture.md`](docs/architecture.md#deferred-production-architecture-designed-but-not-implemented).
 
----
-
-## Resume bullet
-
-> Built Runway, a type-aware Heterogeneous Graph Attention Network trained with InfoNCE contrastive loss and CLIP-mined hard negatives over 35k Polyvore outfits; achieved **AUC 0.848** and **FITB 62.3%** on the full leakage-free inductive test set (caught and fixed a transductive evaluation bug that had inflated AUC to 0.99); served via a FastAPI + pgvector + Redis Streams stack with a Next.js frontend featuring catalog search, image-derived color and brand filters, and an animated "Catwalk" outfit builder backed by an active-learning retrain loop.
